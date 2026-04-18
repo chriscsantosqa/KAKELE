@@ -33,8 +33,8 @@ class MainWindow:
 
         self.root = tk.Tk()
         self.root.title("KakeleBot Next")
-        self.root.geometry("1280x1080")
-        self.root.minsize(1120, 920)
+        self.root.geometry("1280x1120")
+        self.root.minsize(1120, 940)
 
         self._status_var = tk.StringVar(value="idle")
         self._profile_var = tk.StringVar(value=f"profile: {profile.name}")
@@ -73,11 +73,22 @@ class MainWindow:
         self._heal_mana_hotkey_var = tk.StringVar(value=profile.hotkeys.heal_mana)
         self._buff_haste_hotkey_var = tk.StringVar(value=profile.hotkeys.buff_haste)
         self._attack_hotkey_var = tk.StringVar(value=profile.hotkeys.attack_primary)
+        self._secondary_attack_hotkey_var = tk.StringVar(value=profile.hotkeys.attack_secondary)
         self._haste_enabled_var = tk.BooleanVar(value=profile.buffs.haste_enabled)
         self._haste_interval_var = tk.StringVar(value=str(profile.buffs.haste_interval_seconds))
         self._haste_cooldown_var = tk.StringVar(value=str(profile.buffs.haste_cooldown_seconds))
         self._attack_enabled_var = tk.BooleanVar(value=profile.combat.attack_enabled)
         self._attack_cooldown_var = tk.StringVar(value=str(profile.combat.attack_cooldown_seconds))
+        self._secondary_attack_enabled_var = tk.BooleanVar(value=profile.combat.secondary_attack_enabled)
+        self._secondary_attack_cooldown_var = tk.StringVar(
+            value=str(profile.combat.secondary_attack_cooldown_seconds)
+        )
+        self._secondary_attack_after_primary_only_var = tk.BooleanVar(
+            value=profile.combat.secondary_attack_after_primary_only
+        )
+        self._secondary_attack_combo_window_var = tk.StringVar(
+            value=str(profile.combat.secondary_attack_combo_window_seconds)
+        )
         self._target_confirmation_cycles_var = tk.StringVar(
             value=str(profile.combat.target_confirmation_cycles)
         )
@@ -104,6 +115,7 @@ class MainWindow:
         self._diag_suppressed_var = tk.StringVar(value="actions suppressed: -")
         self._diag_haste_var = tk.StringVar(value="haste status: -")
         self._diag_attack_var = tk.StringVar(value="attack status: -")
+        self._diag_secondary_attack_var = tk.StringVar(value="secondary attack status: -")
         self._diag_target_var = tk.StringVar(value="target detected: -")
         self._diag_target_confirmed_var = tk.StringVar(value="target confirmed: -")
         self._diag_target_oscillating_var = tk.StringVar(value="target oscillating: -")
@@ -217,9 +229,12 @@ class MainWindow:
             ("Mana hotkey", self._heal_mana_hotkey_var),
             ("Haste hotkey", self._buff_haste_hotkey_var),
             ("Attack hotkey", self._attack_hotkey_var),
+            ("Secondary hotkey", self._secondary_attack_hotkey_var),
             ("Haste interval (s)", self._haste_interval_var),
             ("Haste cooldown (s)", self._haste_cooldown_var),
             ("Attack cooldown (s)", self._attack_cooldown_var),
+            ("Secondary cooldown (s)", self._secondary_attack_cooldown_var),
+            ("Secondary combo window (s)", self._secondary_attack_combo_window_var),
             ("Target confirmations", self._target_confirmation_cycles_var),
             ("Stability window", self._target_stability_window_var),
             ("Max text variants", self._max_target_text_variants_var),
@@ -268,10 +283,32 @@ class MainWindow:
             sticky=tk.W,
             pady=(4, 0),
         )
+        ttk.Checkbutton(
+            editor,
+            text="Enable secondary combo",
+            variable=self._secondary_attack_enabled_var,
+        ).grid(
+            row=len(fields) + 3,
+            column=0,
+            columnspan=2,
+            sticky=tk.W,
+            pady=(4, 0),
+        )
+        ttk.Checkbutton(
+            editor,
+            text="Secondary only after primary",
+            variable=self._secondary_attack_after_primary_only_var,
+        ).grid(
+            row=len(fields) + 4,
+            column=0,
+            columnspan=2,
+            sticky=tk.W,
+            pady=(4, 0),
+        )
 
         editor.columnconfigure(1, weight=1)
         ttk.Button(editor, text="Save profile", command=self._on_save_profile).grid(
-            row=len(fields) + 3,
+            row=len(fields) + 5,
             column=0,
             columnspan=2,
             sticky=tk.EW,
@@ -336,6 +373,7 @@ class MainWindow:
             self._diag_suppressed_var,
             self._diag_haste_var,
             self._diag_attack_var,
+            self._diag_secondary_attack_var,
             self._diag_target_var,
             self._diag_target_confirmed_var,
             self._diag_target_oscillating_var,
@@ -447,6 +485,7 @@ class MainWindow:
             self._diag_suppressed_var.set("actions suppressed: -")
             self._diag_haste_var.set("haste status: -")
             self._diag_attack_var.set("attack status: -")
+            self._diag_secondary_attack_var.set("secondary attack status: -")
             self._diag_target_var.set("target detected: -")
             self._diag_target_confirmed_var.set("target confirmed: -")
             self._diag_target_oscillating_var.set("target oscillating: -")
@@ -467,6 +506,9 @@ class MainWindow:
         )
         self._diag_haste_var.set(f"haste status: {last_cycle.haste_status}")
         self._diag_attack_var.set(f"attack status: {last_cycle.attack_status}")
+        self._diag_secondary_attack_var.set(
+            f"secondary attack status: {last_cycle.secondary_attack_status}"
+        )
         self._diag_target_var.set(f"target detected: {last_cycle.has_target}")
         self._diag_target_confirmed_var.set(f"target confirmed: {last_cycle.target_confirmed}")
         self._diag_target_oscillating_var.set(f"target oscillating: {last_cycle.target_oscillating}")
@@ -619,11 +661,16 @@ class MainWindow:
         self._heal_mana_hotkey_var.set(profile.hotkeys.heal_mana)
         self._buff_haste_hotkey_var.set(profile.hotkeys.buff_haste)
         self._attack_hotkey_var.set(profile.hotkeys.attack_primary)
+        self._secondary_attack_hotkey_var.set(profile.hotkeys.attack_secondary)
         self._haste_enabled_var.set(profile.buffs.haste_enabled)
         self._haste_interval_var.set(str(profile.buffs.haste_interval_seconds))
         self._haste_cooldown_var.set(str(profile.buffs.haste_cooldown_seconds))
         self._attack_enabled_var.set(profile.combat.attack_enabled)
         self._attack_cooldown_var.set(str(profile.combat.attack_cooldown_seconds))
+        self._secondary_attack_enabled_var.set(profile.combat.secondary_attack_enabled)
+        self._secondary_attack_cooldown_var.set(str(profile.combat.secondary_attack_cooldown_seconds))
+        self._secondary_attack_after_primary_only_var.set(profile.combat.secondary_attack_after_primary_only)
+        self._secondary_attack_combo_window_var.set(str(profile.combat.secondary_attack_combo_window_seconds))
         self._target_confirmation_cycles_var.set(str(profile.combat.target_confirmation_cycles))
         self._target_stability_window_var.set(str(profile.combat.target_stability_window))
         self._max_target_text_variants_var.set(str(profile.combat.max_target_text_variants))
@@ -768,6 +815,7 @@ class MainWindow:
         profile.hotkeys.heal_mana = self._heal_mana_hotkey_var.get().strip().upper()
         profile.hotkeys.buff_haste = self._buff_haste_hotkey_var.get().strip().upper()
         profile.hotkeys.attack_primary = self._attack_hotkey_var.get().strip().upper()
+        profile.hotkeys.attack_secondary = self._secondary_attack_hotkey_var.get().strip().upper()
         profile.buffs.haste_enabled = bool(self._haste_enabled_var.get())
         profile.buffs.haste_interval_seconds = self._parse_float(
             self._haste_interval_var.get(), minimum=0.1, field_name="Haste interval (s)"
@@ -778,6 +826,16 @@ class MainWindow:
         profile.combat.attack_enabled = bool(self._attack_enabled_var.get())
         profile.combat.attack_cooldown_seconds = self._parse_float(
             self._attack_cooldown_var.get(), minimum=0.05, field_name="Attack cooldown (s)"
+        )
+        profile.combat.secondary_attack_enabled = bool(self._secondary_attack_enabled_var.get())
+        profile.combat.secondary_attack_cooldown_seconds = self._parse_float(
+            self._secondary_attack_cooldown_var.get(), minimum=0.05, field_name="Secondary cooldown (s)"
+        )
+        profile.combat.secondary_attack_after_primary_only = bool(
+            self._secondary_attack_after_primary_only_var.get()
+        )
+        profile.combat.secondary_attack_combo_window_seconds = self._parse_float(
+            self._secondary_attack_combo_window_var.get(), minimum=0.05, field_name="Secondary combo window (s)"
         )
         profile.combat.target_confirmation_cycles = self._parse_int(
             self._target_confirmation_cycles_var.get(), minimum=1, maximum=20, field_name="Target confirmations"
@@ -795,6 +853,7 @@ class MainWindow:
             or not profile.hotkeys.heal_mana
             or not profile.hotkeys.buff_haste
             or not profile.hotkeys.attack_primary
+            or not profile.hotkeys.attack_secondary
         ):
             raise ValueError("Global, heal, haste and attack hotkeys cannot be empty.")
 
@@ -883,6 +942,9 @@ class MainWindow:
             )
             parts.append(
                 f"attack_status={result.healing_loop_result.last_cycle.attack_status if result.healing_loop_result.last_cycle else None}"
+            )
+            parts.append(
+                f"secondary_attack_status={result.healing_loop_result.last_cycle.secondary_attack_status if result.healing_loop_result.last_cycle else None}"
             )
             parts.append(f"last_cycle={result.healing_loop_result.last_cycle}")
         return "\n".join(parts) + "\n\n"
