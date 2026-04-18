@@ -134,6 +134,9 @@ class MainWindow:
         ttk.Button(manager, text="Load selected", command=self._on_load_selected_profile).pack(
             fill=tk.X, pady=(0, 8)
         )
+        ttk.Button(manager, text="Delete selected", command=self._on_delete_selected_profile).pack(
+            fill=tk.X, pady=(0, 8)
+        )
 
         ttk.Label(manager, text="Save current as new profile").pack(anchor=tk.W)
         ttk.Entry(manager, textvariable=self._new_profile_name_var).pack(fill=tk.X, pady=(4, 8))
@@ -430,6 +433,23 @@ class MainWindow:
         except ValueError as error:
             self._append_output(f"Create profile failed: {error}\n")
 
+    def _on_delete_selected_profile(self) -> None:
+        if self._profile_manager is None:
+            return
+        if self._worker is not None and self._worker.is_alive():
+            self._append_output("Delete profile ignored: session is running.\n")
+            return
+        try:
+            deleted_name = self._selected_profile_var.get()
+            fallback = self._profile_manager.delete(deleted_name)
+            self._append_output(f"Profile deleted: {deleted_name}.\n")
+            if fallback is not None:
+                profile, profile_path = self._profile_manager.load(fallback)
+                self._load_profile_state(profile, profile_path)
+            self._refresh_profile_list()
+        except ValueError as error:
+            self._append_output(f"Delete profile failed: {error}\n")
+
     def _load_profile_state(self, profile: ProfileSettings, profile_path: Path) -> None:
         self._profile = profile
         self._profile_path = profile_path
@@ -516,7 +536,10 @@ class MainWindow:
     def _on_save_profile(self) -> None:
         try:
             self._sync_form_into_profile(self._profile)
-            save_profile(self._profile_path, self._profile)
+            if self._profile_manager is not None:
+                self._profile_manager.save_current(self._profile, self._profile_path)
+            else:
+                save_profile(self._profile_path, self._profile)
             self._append_output(f"Profile saved to {self._profile_path}.\n")
             self._refresh_profile_list()
         except ValueError as error:
