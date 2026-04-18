@@ -46,15 +46,11 @@ def run_gui() -> int:
         vision_service=vision_service,
     )
 
-    settings_path = runtime.paths.root / "settings.json"
     profile_path = runtime.paths.profiles / f"{runtime.profile.name}.json"
     window = MainWindow(
         session_controller=session_controller,
         profile=runtime.profile,
         profile_path=profile_path,
-        settings=runtime.settings,
-        settings_path=settings_path,
-        profiles_dir=runtime.paths.profiles,
     )
     window.run()
     return 0
