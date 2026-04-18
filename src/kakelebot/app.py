@@ -4,11 +4,14 @@ import logging
 
 from kakelebot.core.calibration import CalibrationService
 from kakelebot.core.capture import CaptureService
+from kakelebot.core.input import InputService
 from kakelebot.core.runtime import RuntimeBootstrap
 from kakelebot.core.vision import VisionService
 from kakelebot.core.window import WindowDiscoveryError, WindowService
 from kakelebot.features.healing import HealingService
+from kakelebot.features.healing_runtime import HealingRuntime
 from kakelebot.infra.pyautogui_capture_adapter import PyAutoGuiCaptureAdapter
+from kakelebot.infra.pydirectinput_adapter import PyDirectInputAdapter
 from kakelebot.infra.pygetwindow_adapter import PyGetWindowAdapter
 from kakelebot.infra.pytesseract_adapter import PyTesseractAdapter
 
@@ -84,29 +87,35 @@ def run() -> int:
 
         try:
             vision_service = VisionService(PyTesseractAdapter())
-            life_image = capture_service.capture(snapshot.life_bar)
-            mana_image = capture_service.capture(snapshot.mana_bar)
-
-            life_reading = vision_service.read_bar_value(life_image)
-            mana_reading = vision_service.read_bar_value(mana_image)
-
-            decision = healing_service.evaluate(
-                life=life_reading,
-                mana=mana_reading,
-                life_threshold_percent=runtime.profile.thresholds.life_percent,
-                mana_threshold_percent=runtime.profile.thresholds.mana_percent,
+            input_service = InputService(PyDirectInputAdapter())
+            healing_runtime = HealingRuntime(
+                capture_service=capture_service,
+                vision_service=vision_service,
+                healing_service=healing_service,
+                input_service=input_service,
             )
 
-            logger.info("Life OCR reading: %s", life_reading)
-            logger.info("Mana OCR reading: %s", mana_reading)
-            logger.info("Healing decision: %s", decision)
+            cycle_result = healing_runtime.execute_cycle(
+                snapshot=snapshot,
+                life_hotkey=runtime.profile.hotkeys.heal_life,
+                mana_hotkey=runtime.profile.hotkeys.heal_mana,
+                life_threshold_percent=runtime.profile.thresholds.life_percent,
+                mana_threshold_percent=runtime.profile.thresholds.mana_percent,
+                window_is_active=game_window.is_active,
+            )
 
-            print(f"Life OCR reading: {life_reading}")
-            print(f"Mana OCR reading: {mana_reading}")
-            print(f"Healing decision: {decision.reason}")
+            logger.info("Life OCR reading: %s", cycle_result.life_reading)
+            logger.info("Mana OCR reading: %s", cycle_result.mana_reading)
+            logger.info("Healing decision: %s", cycle_result.decision)
+            logger.info("Healing actions executed: %s", cycle_result.actions_executed)
+
+            print(f"Life OCR reading: {cycle_result.life_reading}")
+            print(f"Mana OCR reading: {cycle_result.mana_reading}")
+            print(f"Healing decision: {cycle_result.decision.reason}")
+            print(f"Healing actions executed: {cycle_result.actions_executed}")
         except RuntimeError as error:
-            logger.warning("OCR bootstrap unavailable: %s", error)
-            print(f"OCR bootstrap unavailable: {error}")
+            logger.warning("Healing bootstrap unavailable: %s", error)
+            print(f"Healing bootstrap unavailable: {error}")
     except WindowDiscoveryError as error:
         logger.warning("%s", error)
         print(str(error))
