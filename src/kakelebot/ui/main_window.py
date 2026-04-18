@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -35,8 +36,8 @@ class MainWindow:
 
         self.root = tk.Tk()
         self.root.title("KakeleBot Next")
-        self.root.geometry("1280x1220")
-        self.root.minsize(1120, 1000)
+        self.root.geometry("1280x1260")
+        self.root.minsize(1120, 1020)
 
         self._status_var = tk.StringVar(value="idle")
         self._profile_var = tk.StringVar(value=f"profile: {profile.name}")
@@ -117,6 +118,7 @@ class MainWindow:
         self._target_top_ratio_var = tk.StringVar(value=str(profile.rois.target_status.top_ratio))
         self._target_width_ratio_var = tk.StringVar(value=str(profile.rois.target_status.width_ratio))
         self._target_height_ratio_var = tk.StringVar(value=str(profile.rois.target_status.height_ratio))
+        self._roi_nudge_step_var = tk.StringVar(value="0.002")
 
         self._diag_decision_var = tk.StringVar(value="decision: -")
         self._diag_life_var = tk.StringVar(value="life: -")
@@ -359,50 +361,51 @@ class MainWindow:
         roi_editor = ttk.LabelFrame(parent, text="Assisted ROI calibration", padding=12)
         roi_editor.pack(fill=tk.BOTH, expand=False)
 
-        ttk.Label(roi_editor, text="Life ROI ratios").grid(row=0, column=0, columnspan=2, sticky=tk.W)
-        life_fields = [
-            ("Left", self._life_left_ratio_var),
-            ("Top", self._life_top_ratio_var),
-            ("Width", self._life_width_ratio_var),
-            ("Height", self._life_height_ratio_var),
-        ]
-        for index, (label, variable) in enumerate(life_fields, start=1):
-            ttk.Label(roi_editor, text=label).grid(row=index, column=0, sticky=tk.W, pady=3)
-            ttk.Entry(roi_editor, textvariable=variable, width=18).grid(
-                row=index, column=1, sticky=tk.EW, pady=3, padx=(10, 0)
-            )
-
-        mana_base_row = len(life_fields) + 1
-        ttk.Label(roi_editor, text="Mana ROI ratios").grid(
-            row=mana_base_row, column=0, columnspan=2, sticky=tk.W, pady=(10, 0)
+        ttk.Label(roi_editor, text="Nudge step").grid(row=0, column=0, sticky=tk.W)
+        ttk.Entry(roi_editor, textvariable=self._roi_nudge_step_var, width=18).grid(
+            row=0,
+            column=1,
+            sticky=tk.EW,
+            padx=(10, 0),
         )
-        mana_fields = [
-            ("Left", self._mana_left_ratio_var),
-            ("Top", self._mana_top_ratio_var),
-            ("Width", self._mana_width_ratio_var),
-            ("Height", self._mana_height_ratio_var),
-        ]
-        for offset, (label, variable) in enumerate(mana_fields, start=1):
-            ttk.Label(roi_editor, text=label).grid(row=mana_base_row + offset, column=0, sticky=tk.W, pady=3)
-            ttk.Entry(roi_editor, textvariable=variable, width=18).grid(
-                row=mana_base_row + offset, column=1, sticky=tk.EW, pady=3, padx=(10, 0)
-            )
 
-        target_base_row = mana_base_row + len(mana_fields) + 1
-        ttk.Label(roi_editor, text="Target ROI ratios").grid(
-            row=target_base_row, column=0, columnspan=2, sticky=tk.W, pady=(10, 0)
+        row_cursor = 1
+        row_cursor = self._build_roi_section(
+            roi_editor,
+            row_cursor,
+            title="Life ROI ratios",
+            roi_name="life",
+            fields=[
+                ("Left", self._life_left_ratio_var),
+                ("Top", self._life_top_ratio_var),
+                ("Width", self._life_width_ratio_var),
+                ("Height", self._life_height_ratio_var),
+            ],
         )
-        target_fields = [
-            ("Left", self._target_left_ratio_var),
-            ("Top", self._target_top_ratio_var),
-            ("Width", self._target_width_ratio_var),
-            ("Height", self._target_height_ratio_var),
-        ]
-        for offset, (label, variable) in enumerate(target_fields, start=1):
-            ttk.Label(roi_editor, text=label).grid(row=target_base_row + offset, column=0, sticky=tk.W, pady=3)
-            ttk.Entry(roi_editor, textvariable=variable, width=18).grid(
-                row=target_base_row + offset, column=1, sticky=tk.EW, pady=3, padx=(10, 0)
-            )
+        row_cursor = self._build_roi_section(
+            roi_editor,
+            row_cursor,
+            title="Mana ROI ratios",
+            roi_name="mana",
+            fields=[
+                ("Left", self._mana_left_ratio_var),
+                ("Top", self._mana_top_ratio_var),
+                ("Width", self._mana_width_ratio_var),
+                ("Height", self._mana_height_ratio_var),
+            ],
+        )
+        row_cursor = self._build_roi_section(
+            roi_editor,
+            row_cursor,
+            title="Target ROI ratios",
+            roi_name="target",
+            fields=[
+                ("Left", self._target_left_ratio_var),
+                ("Top", self._target_top_ratio_var),
+                ("Width", self._target_width_ratio_var),
+                ("Height", self._target_height_ratio_var),
+            ],
+        )
 
         roi_editor.columnconfigure(1, weight=1)
         ttk.Button(
@@ -410,12 +413,78 @@ class MainWindow:
             text="Save ROI calibration",
             command=self._on_save_roi_calibration,
         ).grid(
-            row=target_base_row + len(target_fields) + 1,
+            row=row_cursor,
             column=0,
             columnspan=2,
             sticky=tk.EW,
             pady=(12, 0),
         )
+
+    def _build_roi_section(
+        self,
+        parent: ttk.LabelFrame,
+        row_start: int,
+        title: str,
+        roi_name: str,
+        fields: list[tuple[str, tk.StringVar]],
+    ) -> int:
+        ttk.Label(parent, text=title).grid(
+            row=row_start,
+            column=0,
+            columnspan=2,
+            sticky=tk.W,
+            pady=(10 if row_start > 1 else 8, 0),
+        )
+
+        for offset, (label, variable) in enumerate(fields, start=1):
+            ttk.Label(parent, text=label).grid(
+                row=row_start + offset,
+                column=0,
+                sticky=tk.W,
+                pady=3,
+            )
+            ttk.Entry(parent, textvariable=variable, width=18).grid(
+                row=row_start + offset,
+                column=1,
+                sticky=tk.EW,
+                pady=3,
+                padx=(10, 0),
+            )
+
+        buttons = ttk.Frame(parent)
+        buttons.grid(
+            row=row_start + len(fields) + 1,
+            column=0,
+            columnspan=2,
+            sticky=tk.EW,
+            pady=(6, 0),
+        )
+
+        button_specs = [
+            ("L-", "left", -1),
+            ("L+", "left", 1),
+            ("T-", "top", -1),
+            ("T+", "top", 1),
+            ("W-", "width", -1),
+            ("W+", "width", 1),
+            ("H-", "height", -1),
+            ("H+", "height", 1),
+        ]
+        for index, (label, field_name, direction) in enumerate(button_specs):
+            ttk.Button(
+                buttons,
+                text=label,
+                width=4,
+                command=lambda rn=roi_name, fn=field_name, d=direction: self._on_nudge_roi(rn, fn, d),
+            ).grid(row=0, column=index, padx=2, pady=2)
+
+        ttk.Button(buttons, text="Preview", command=self._on_refresh_preview).grid(
+            row=0,
+            column=len(button_specs),
+            padx=(8, 0),
+            pady=2,
+        )
+        return row_start + len(fields) + 2
 
     def _build_diagnostics(self, parent: ttk.Frame) -> None:
         diagnostics = ttk.LabelFrame(parent, text="Diagnostics", padding=12)
@@ -664,26 +733,47 @@ class MainWindow:
         self._append_output("Stop requested.\n")
 
     def _on_refresh_preview(self) -> None:
-        preview = self._session_controller.capture_preview(self._profile)
-        self._apply_preview(preview)
-        if preview.error_message:
-            self._append_output(f"Preview refresh failed: {preview.error_message}\n")
-        else:
-            self._append_output("ROI / OCR preview refreshed.\n")
+        try:
+            preview_profile = self._build_preview_profile_from_form()
+            preview = self._session_controller.capture_preview(preview_profile)
+            self._apply_preview(preview, preview_profile)
+            if preview.error_message:
+                self._append_output(f"Preview refresh failed: {preview.error_message}\n")
+            else:
+                self._append_output("ROI / OCR preview refreshed.\n")
+        except ValueError as error:
+            self._append_output(f"Preview refresh failed: {error}\n")
+
+    def _on_nudge_roi(self, roi_name: str, field_name: str, direction: int) -> None:
+        try:
+            step = self._parse_float(
+                self._roi_nudge_step_var.get(),
+                minimum=0.0001,
+                field_name="ROI nudge step",
+            )
+            variable = self._roi_variable(roi_name, field_name)
+            current = float(variable.get().strip())
+            minimum = 0.0001 if field_name in ("width", "height") else 0.0
+            updated = max(minimum, min(1.0, current + (step * direction)))
+            variable.set(self._format_ratio(updated))
+            self._on_refresh_preview()
+        except ValueError as error:
+            self._append_output(f"ROI nudge failed: {error}\n")
 
     def _on_adopt_current_window_baseline(self) -> None:
         try:
-            self._sync_form_into_profile(self._profile)
-            preview = self._session_controller.capture_preview(self._profile)
+            preview_profile = self._build_preview_profile_from_form()
+            preview = self._session_controller.capture_preview(preview_profile)
             if preview.error_message or preview.window is None:
-                self._apply_preview(preview)
+                self._apply_preview(preview, preview_profile)
                 self._append_output(f"Adopt baseline failed: {preview.error_message}\n")
                 return
 
+            self._profile = preview_profile
             self._profile.resolution_width = preview.window.width
             self._profile.resolution_height = preview.window.height
             save_profile(self._profile_path, self._profile)
-            self._apply_preview(self._session_controller.capture_preview(self._profile))
+            self._apply_preview(self._session_controller.capture_preview(self._profile), self._profile)
             self._append_output(
                 f"Current window adopted as baseline: {self._profile.resolution_width}x{self._profile.resolution_height}.\n"
             )
@@ -829,7 +919,12 @@ class MainWindow:
         self._target_height_ratio_var.set(str(profile.rois.target_status.height_ratio))
         self._configure_global_hotkeys()
 
-    def _apply_preview(self, preview: SessionPreviewResult) -> None:
+    def _apply_preview(
+        self,
+        preview: SessionPreviewResult,
+        preview_profile: ProfileSettings | None = None,
+    ) -> None:
+        profile_for_preview = preview_profile or self._profile
         if preview.error_message or preview.window is None or preview.calibration_snapshot is None:
             self._preview_window_var.set("window: unavailable")
             self._preview_profile_resolution_var.set("profile resolution: unavailable")
@@ -854,7 +949,7 @@ class MainWindow:
             f"window: {window.title} {window.width}x{window.height} at ({window.left}, {window.top})"
         )
         self._preview_profile_resolution_var.set(
-            f"profile resolution: {self._profile.resolution_width}x{self._profile.resolution_height} | ui_scale={self._profile.ui_scale:.2f}"
+            f"profile resolution: {profile_for_preview.resolution_width}x{profile_for_preview.resolution_height} | ui_scale={profile_for_preview.ui_scale:.2f}"
         )
         self._preview_resolution_validation_var.set(
             "window validation: "
@@ -1025,6 +1120,12 @@ class MainWindow:
         ):
             raise ValueError("Global, heal, haste and attack hotkeys cannot be empty.")
 
+        self._sync_roi_form_into_profile(profile)
+
+    def _sync_roi_form_into_profile(self, profile: ProfileSettings) -> None:
+        profile.ui_scale = self._parse_float(
+            self._ui_scale_var.get(), minimum=0.5, field_name="UI scale"
+        )
         profile.rois.life_bar.left_ratio = self._parse_ratio(
             self._life_left_ratio_var.get(), field_name="Life ROI left"
         )
@@ -1062,11 +1163,16 @@ class MainWindow:
             self._target_height_ratio_var.get(), field_name="Target ROI height", allow_zero=False
         )
 
+    def _build_preview_profile_from_form(self) -> ProfileSettings:
+        preview_profile = copy.deepcopy(self._profile)
+        self._sync_roi_form_into_profile(preview_profile)
+        return preview_profile
+
     def _on_save_roi_calibration(self) -> None:
         try:
             self._sync_form_into_profile(self._profile)
             preview = self._session_controller.capture_preview(self._profile)
-            self._apply_preview(preview)
+            self._apply_preview(preview, self._profile)
             if preview.error_message:
                 self._append_output(f"ROI calibration save failed: {preview.error_message}\n")
                 return
@@ -1111,6 +1217,28 @@ class MainWindow:
             if preset.label == selected_label:
                 return preset.description
         return ""
+
+    def _roi_variable(self, roi_name: str, field_name: str) -> tk.StringVar:
+        mapping = {
+            ("life", "left"): self._life_left_ratio_var,
+            ("life", "top"): self._life_top_ratio_var,
+            ("life", "width"): self._life_width_ratio_var,
+            ("life", "height"): self._life_height_ratio_var,
+            ("mana", "left"): self._mana_left_ratio_var,
+            ("mana", "top"): self._mana_top_ratio_var,
+            ("mana", "width"): self._mana_width_ratio_var,
+            ("mana", "height"): self._mana_height_ratio_var,
+            ("target", "left"): self._target_left_ratio_var,
+            ("target", "top"): self._target_top_ratio_var,
+            ("target", "width"): self._target_width_ratio_var,
+            ("target", "height"): self._target_height_ratio_var,
+        }
+        return mapping[(roi_name, field_name)]
+
+    @staticmethod
+    def _format_ratio(value: float) -> str:
+        text = f"{value:.4f}".rstrip("0").rstrip(".")
+        return text if text else "0"
 
     def _clear_preview_images(self) -> None:
         self._life_preview_label.configure(image="", text="No preview")
