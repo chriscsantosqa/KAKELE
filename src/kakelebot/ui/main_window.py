@@ -6,6 +6,7 @@ from pathlib import Path
 from tkinter import ttk
 
 from kakelebot.core.config import ProfileSettings, save_profile
+from kakelebot.core.global_hotkeys import GlobalHotkeyService
 from kakelebot.core.profile_manager import ProfileManager
 from kakelebot.core.session import SessionController, SessionPreviewResult, SessionRunResult, SessionState
 
@@ -22,6 +23,7 @@ class MainWindow:
         self._profile = profile
         self._profile_path = profile_path
         self._profile_manager = profile_manager
+        self._global_hotkeys = GlobalHotkeyService()
         self._worker: threading.Thread | None = None
         self._last_session_result: SessionRunResult | None = None
         self._life_preview_image = None
@@ -55,6 +57,8 @@ class MainWindow:
         self._cycle_limit_var = tk.StringVar(
             value=str(profile.healing_loop.bootstrap_cycle_limit)
         )
+        self._start_stop_hotkey_var = tk.StringVar(value=profile.hotkeys.start_stop)
+        self._pause_resume_hotkey_var = tk.StringVar(value=profile.hotkeys.pause_resume)
         self._heal_life_hotkey_var = tk.StringVar(value=profile.hotkeys.heal_life)
         self._heal_mana_hotkey_var = tk.StringVar(value=profile.hotkeys.heal_mana)
 
@@ -84,6 +88,8 @@ class MainWindow:
 
         self._build_layout()
         self._refresh_profile_list()
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        self._configure_global_hotkeys()
         self._schedule_refresh()
 
     def _build_layout(self) -> None:
@@ -165,6 +171,8 @@ class MainWindow:
             ("Life cooldown (s)", self._life_cooldown_var),
             ("Mana cooldown (s)", self._mana_cooldown_var),
             ("Cycle limit", self._cycle_limit_var),
+            ("Start/Stop hotkey", self._start_stop_hotkey_var),
+            ("Pause/Resume hotkey", self._pause_resume_hotkey_var),
             ("Life hotkey", self._heal_life_hotkey_var),
             ("Mana hotkey", self._heal_mana_hotkey_var),
         ]
@@ -364,6 +372,31 @@ class MainWindow:
             )
         )
 
+    def _configure_global_hotkeys(self) -> None:
+        try:
+            self._global_hotkeys.configure(
+                start_stop_hotkey=self._profile.hotkeys.start_stop,
+                pause_resume_hotkey=self._profile.hotkeys.pause_resume,
+                on_start_stop=lambda: self.root.after(0, self._handle_start_stop_hotkey),
+                on_pause_resume=lambda: self.root.after(0, self._handle_pause_resume_hotkey),
+            )
+        except (RuntimeError, ValueError) as error:
+            self._append_output(f"Global hotkeys unavailable: {error}\n")
+
+    def _handle_start_stop_hotkey(self) -> None:
+        state = self._session_controller.status.state
+        if state in (SessionState.RUNNING, SessionState.PAUSED):
+            self._on_stop()
+        else:
+            self._on_start()
+
+    def _handle_pause_resume_hotkey(self) -> None:
+        state = self._session_controller.status.state
+        if state == SessionState.RUNNING:
+            self._on_pause()
+        elif state == SessionState.PAUSED:
+            self._on_resume()
+
     def _on_start(self) -> None:
         if self._worker is not None and self._worker.is_alive():
             self._append_output("Start ignored: session already running.\n")
@@ -461,6 +494,8 @@ class MainWindow:
         self._life_cooldown_var.set(str(profile.healing_loop.life_cooldown_seconds))
         self._mana_cooldown_var.set(str(profile.healing_loop.mana_cooldown_seconds))
         self._cycle_limit_var.set(str(profile.healing_loop.bootstrap_cycle_limit))
+        self._start_stop_hotkey_var.set(profile.hotkeys.start_stop)
+        self._pause_resume_hotkey_var.set(profile.hotkeys.pause_resume)
         self._heal_life_hotkey_var.set(profile.hotkeys.heal_life)
         self._heal_mana_hotkey_var.set(profile.hotkeys.heal_mana)
         self._life_left_ratio_var.set(str(profile.rois.life_bar.left_ratio))
@@ -471,6 +506,7 @@ class MainWindow:
         self._mana_top_ratio_var.set(str(profile.rois.mana_bar.top_ratio))
         self._mana_width_ratio_var.set(str(profile.rois.mana_bar.width_ratio))
         self._mana_height_ratio_var.set(str(profile.rois.mana_bar.height_ratio))
+        self._configure_global_hotkeys()
 
     def _apply_preview(self, preview: SessionPreviewResult) -> None:
         if preview.error_message or preview.window is None or preview.calibration_snapshot is None:
@@ -540,6 +576,7 @@ class MainWindow:
                 self._profile_manager.save_current(self._profile, self._profile_path)
             else:
                 save_profile(self._profile_path, self._profile)
+            self._configure_global_hotkeys()
             self._append_output(f"Profile saved to {self._profile_path}.\n")
             self._refresh_profile_list()
         except ValueError as error:
@@ -564,10 +601,17 @@ class MainWindow:
         profile.healing_loop.bootstrap_cycle_limit = self._parse_int(
             self._cycle_limit_var.get(), minimum=1, maximum=9999, field_name="Cycle limit"
         )
+        profile.hotkeys.start_stop = self._start_stop_hotkey_var.get().strip().upper()
+        profile.hotkeys.pause_resume = self._pause_resume_hotkey_var.get().strip().upper()
         profile.hotkeys.heal_life = self._heal_life_hotkey_var.get().strip().upper()
         profile.hotkeys.heal_mana = self._heal_mana_hotkey_var.get().strip().upper()
-        if not profile.hotkeys.heal_life or not profile.hotkeys.heal_mana:
-            raise ValueError("Life and mana hotkeys cannot be empty.")
+        if (
+            not profile.hotkeys.start_stop
+            or not profile.hotkeys.pause_resume
+            or not profile.hotkeys.heal_life
+            or not profile.hotkeys.heal_mana
+        ):
+            raise ValueError("Global, life and mana hotkeys cannot be empty.")
 
         profile.rois.life_bar.left_ratio = self._parse_ratio(
             self._life_left_ratio_var.get(), field_name="Life ROI left"
@@ -618,6 +662,10 @@ class MainWindow:
         self._output.insert(tk.END, text)
         self._output.see(tk.END)
         self._output.configure(state=tk.DISABLED)
+
+    def _on_close(self) -> None:
+        self._global_hotkeys.stop()
+        self.root.destroy()
 
     @staticmethod
     def _format_result(result: SessionRunResult) -> str:
