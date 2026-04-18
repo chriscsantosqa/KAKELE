@@ -40,7 +40,10 @@ class HealingLoopRunner:
         terminated_early = False
 
         cycle_limit = max(1, profile.healing_loop.bootstrap_cycle_limit)
-        for cycle_index in range(cycle_limit):
+        continuous_mode = profile.healing_loop.continuous_mode
+        cycle_index = 0
+
+        while True:
             if should_continue is not None and not should_continue():
                 terminated_early = True
                 break
@@ -68,9 +71,12 @@ class HealingLoopRunner:
                 window_is_active=window.is_active,
             )
             cycles_completed += 1
+            cycle_index += 1
 
-            if cycle_index < cycle_limit - 1:
-                self._sleep(profile.healing_loop.polling_interval_seconds)
+            if not continuous_mode and cycle_index >= cycle_limit:
+                break
+
+            self._sleep(profile.healing_loop.polling_interval_seconds)
 
         return HealingLoopResult(
             cycles_completed=cycles_completed,
