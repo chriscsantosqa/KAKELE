@@ -32,6 +32,14 @@ class ThresholdSettings:
 
 
 @dataclass(slots=True)
+class HealingLoopSettings:
+    polling_interval_seconds: float = 0.5
+    life_cooldown_seconds: float = 1.0
+    mana_cooldown_seconds: float = 1.0
+    bootstrap_cycle_limit: int = 3
+
+
+@dataclass(slots=True)
 class NormalizedRegionSettings:
     left_ratio: float
     top_ratio: float
@@ -63,6 +71,7 @@ class ProfileSettings:
     ui_scale: float = 1.0
     hotkeys: HotkeysSettings = field(default_factory=HotkeysSettings)
     thresholds: ThresholdSettings = field(default_factory=ThresholdSettings)
+    healing_loop: HealingLoopSettings = field(default_factory=HealingLoopSettings)
     rois: RoiSettings = field(default_factory=RoiSettings)
 
 
@@ -108,6 +117,24 @@ def _load_rois(raw: dict) -> RoiSettings:
     )
 
 
+def _load_healing_loop(raw: dict) -> HealingLoopSettings:
+    defaults = HealingLoopSettings()
+    return HealingLoopSettings(
+        polling_interval_seconds=raw.get(
+            "polling_interval_seconds", defaults.polling_interval_seconds
+        ),
+        life_cooldown_seconds=raw.get(
+            "life_cooldown_seconds", defaults.life_cooldown_seconds
+        ),
+        mana_cooldown_seconds=raw.get(
+            "mana_cooldown_seconds", defaults.mana_cooldown_seconds
+        ),
+        bootstrap_cycle_limit=raw.get(
+            "bootstrap_cycle_limit", defaults.bootstrap_cycle_limit
+        ),
+    )
+
+
 def load_profile(path: Path) -> ProfileSettings:
     if not path.exists():
         profile = ProfileSettings()
@@ -117,6 +144,7 @@ def load_profile(path: Path) -> ProfileSettings:
     raw = json.loads(path.read_text(encoding="utf-8"))
     hotkeys = HotkeysSettings(**raw.get("hotkeys", {}))
     thresholds = ThresholdSettings(**raw.get("thresholds", {}))
+    healing_loop = _load_healing_loop(raw.get("healing_loop", {}))
     rois = _load_rois(raw.get("rois", {}))
 
     return ProfileSettings(
@@ -126,5 +154,6 @@ def load_profile(path: Path) -> ProfileSettings:
         ui_scale=raw.get("ui_scale", 1.0),
         hotkeys=hotkeys,
         thresholds=thresholds,
+        healing_loop=healing_loop,
         rois=rois,
     )
