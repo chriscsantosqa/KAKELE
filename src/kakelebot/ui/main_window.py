@@ -33,8 +33,8 @@ class MainWindow:
 
         self.root = tk.Tk()
         self.root.title("KakeleBot Next")
-        self.root.geometry("1280x1020")
-        self.root.minsize(1120, 860)
+        self.root.geometry("1280x1040")
+        self.root.minsize(1120, 880)
 
         self._status_var = tk.StringVar(value="idle")
         self._profile_var = tk.StringVar(value=f"profile: {profile.name}")
@@ -91,6 +91,8 @@ class MainWindow:
         self._diag_actions_var = tk.StringVar(value="actions executed: -")
         self._diag_suppressed_var = tk.StringVar(value="actions suppressed: -")
         self._diag_haste_var = tk.StringVar(value="haste status: -")
+        self._diag_target_var = tk.StringVar(value="target detected: -")
+        self._diag_target_reason_var = tk.StringVar(value="target reason: -")
         self._diag_terminated_var = tk.StringVar(value="terminated early: -")
         self._diag_termination_reason_var = tk.StringVar(value="termination reason: -")
         self._diag_fail_safe_var = tk.StringVar(value="fail-safe triggered: -")
@@ -98,8 +100,11 @@ class MainWindow:
         self._preview_window_var = tk.StringVar(value="window: -")
         self._preview_life_roi_var = tk.StringVar(value="life roi: -")
         self._preview_mana_roi_var = tk.StringVar(value="mana roi: -")
+        self._preview_target_roi_var = tk.StringVar(value="target roi: -")
         self._ocr_life_text_var = tk.StringVar(value="life OCR: -")
         self._ocr_mana_text_var = tk.StringVar(value="mana OCR: -")
+        self._preview_target_status_var = tk.StringVar(value="target status: -")
+        self._preview_target_text_var = tk.StringVar(value="target OCR: -")
         self._ocr_life_reading_var = tk.StringVar(value="life reading: -")
         self._ocr_mana_reading_var = tk.StringVar(value="mana reading: -")
 
@@ -299,6 +304,8 @@ class MainWindow:
             self._diag_actions_var,
             self._diag_suppressed_var,
             self._diag_haste_var,
+            self._diag_target_var,
+            self._diag_target_reason_var,
             self._diag_terminated_var,
             self._diag_termination_reason_var,
             self._diag_fail_safe_var,
@@ -315,9 +322,12 @@ class MainWindow:
 
         ttk.Label(preview, textvariable=self._preview_window_var, wraplength=860).pack(anchor=tk.W)
         ttk.Label(preview, textvariable=self._preview_life_roi_var, wraplength=860).pack(anchor=tk.W, pady=(4, 0))
-        ttk.Label(preview, textvariable=self._preview_mana_roi_var, wraplength=860).pack(anchor=tk.W, pady=(2, 8))
+        ttk.Label(preview, textvariable=self._preview_mana_roi_var, wraplength=860).pack(anchor=tk.W, pady=(2, 0))
+        ttk.Label(preview, textvariable=self._preview_target_roi_var, wraplength=860).pack(anchor=tk.W, pady=(2, 8))
         ttk.Label(preview, textvariable=self._ocr_life_text_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W)
         ttk.Label(preview, textvariable=self._ocr_mana_text_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 0))
+        ttk.Label(preview, textvariable=self._preview_target_status_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 0))
+        ttk.Label(preview, textvariable=self._preview_target_text_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 0))
         ttk.Label(preview, textvariable=self._ocr_life_reading_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 0))
         ttk.Label(preview, textvariable=self._ocr_mana_reading_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 8))
 
@@ -402,6 +412,8 @@ class MainWindow:
             self._diag_actions_var.set("actions executed: -")
             self._diag_suppressed_var.set("actions suppressed: -")
             self._diag_haste_var.set("haste status: -")
+            self._diag_target_var.set("target detected: -")
+            self._diag_target_reason_var.set("target reason: -")
             self._diag_terminated_var.set("terminated early: -")
             self._diag_termination_reason_var.set("termination reason: -")
             self._diag_fail_safe_var.set("fail-safe triggered: -")
@@ -417,6 +429,11 @@ class MainWindow:
             "actions suppressed: " + (", ".join(last_cycle.suppressed_actions) or "none")
         )
         self._diag_haste_var.set(f"haste status: {last_cycle.haste_status}")
+        self._diag_target_var.set(f"target detected: {last_cycle.has_target}")
+        self._diag_target_reason_var.set(
+            "target reason: "
+            + (f"{last_cycle.target_reason} | text='{last_cycle.target_text or 'empty'}'")
+        )
         self._diag_terminated_var.set(
             "terminated early: "
             + (str(loop_result.terminated_early) if loop_result is not None else "-")
@@ -579,8 +596,11 @@ class MainWindow:
             self._preview_window_var.set("window: unavailable")
             self._preview_life_roi_var.set("life roi: unavailable")
             self._preview_mana_roi_var.set("mana roi: unavailable")
+            self._preview_target_roi_var.set("target roi: unavailable")
             self._ocr_life_text_var.set("life OCR: unavailable")
             self._ocr_mana_text_var.set("mana OCR: unavailable")
+            self._preview_target_status_var.set("target status: unavailable")
+            self._preview_target_text_var.set("target OCR: unavailable")
             self._ocr_life_reading_var.set("life reading: unavailable")
             self._ocr_mana_reading_var.set("mana reading: unavailable")
             self._clear_preview_images()
@@ -599,9 +619,14 @@ class MainWindow:
             f"mana roi: x={snapshot.mana_bar.left}, y={snapshot.mana_bar.top}, "
             f"w={snapshot.mana_bar.width}, h={snapshot.mana_bar.height}"
         )
+        self._preview_target_roi_var.set(
+            f"target roi: x={snapshot.target_status.left}, y={snapshot.target_status.top}, "
+            f"w={snapshot.target_status.width}, h={snapshot.target_status.height}"
+        )
 
         life_preview = preview.life_preview
         mana_preview = preview.mana_preview
+        target_preview = preview.target_preview
         self._ocr_life_text_var.set(
             "life OCR: "
             + (life_preview.normalized_text if life_preview is not None and life_preview.normalized_text else "empty")
@@ -609,6 +634,20 @@ class MainWindow:
         self._ocr_mana_text_var.set(
             "mana OCR: "
             + (mana_preview.normalized_text if mana_preview is not None and mana_preview.normalized_text else "empty")
+        )
+        self._preview_target_status_var.set(
+            "target status: "
+            + (
+                f"detected={target_preview.has_target} reason={target_preview.reason}"
+                if target_preview is not None
+                else "unavailable"
+            )
+        )
+        self._preview_target_text_var.set(
+            "target OCR: "
+            + (
+                target_preview.normalized_text if target_preview is not None and target_preview.normalized_text else "empty"
+            )
         )
         self._ocr_life_reading_var.set(
             "life reading: " + (self._format_reading(life_preview.reading) if life_preview is not None else "unavailable")
@@ -769,6 +808,12 @@ class MainWindow:
             parts.append(f"terminated_early={result.healing_loop_result.terminated_early}")
             parts.append(f"termination_reason={result.healing_loop_result.termination_reason}")
             parts.append(f"fail_safe_triggered={result.healing_loop_result.fail_safe_triggered}")
+            parts.append(
+                f"target_detected={result.healing_loop_result.last_cycle.has_target if result.healing_loop_result.last_cycle else None}"
+            )
+            parts.append(
+                f"target_reason={result.healing_loop_result.last_cycle.target_reason if result.healing_loop_result.last_cycle else None}"
+            )
             parts.append(f"last_cycle={result.healing_loop_result.last_cycle}")
         return "\n".join(parts) + "\n\n"
 
