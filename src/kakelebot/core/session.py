@@ -116,6 +116,12 @@ class SessionController:
             with self._lock:
                 if self._status.state == SessionState.STOPPED:
                     final_status = self._status
+                elif healing_loop_result.fail_safe_triggered:
+                    final_status = SessionStatus(
+                        SessionState.FAILED,
+                        f"fail-safe triggered: {healing_loop_result.termination_reason}",
+                    )
+                    self._status = final_status
                 else:
                     final_status = SessionStatus(SessionState.COMPLETED, "healing bootstrap session completed")
                     self._status = final_status
