@@ -22,6 +22,7 @@ class HotkeysSettings:
     heal_life: str = "F1"
     heal_mana: str = "F2"
     buff_haste: str = "F3"
+    attack_primary: str = "F4"
 
 
 @dataclass(slots=True)
@@ -35,6 +36,12 @@ class BuffSettings:
     haste_enabled: bool = False
     haste_interval_seconds: float = 30.0
     haste_cooldown_seconds: float = 1.0
+
+
+@dataclass(slots=True)
+class CombatSettings:
+    attack_enabled: bool = False
+    attack_cooldown_seconds: float = 0.5
 
 
 @dataclass(slots=True)
@@ -82,6 +89,7 @@ class ProfileSettings:
     hotkeys: HotkeysSettings = field(default_factory=HotkeysSettings)
     thresholds: ThresholdSettings = field(default_factory=ThresholdSettings)
     buffs: BuffSettings = field(default_factory=BuffSettings)
+    combat: CombatSettings = field(default_factory=CombatSettings)
     healing_loop: HealingLoopSettings = field(default_factory=HealingLoopSettings)
     rois: RoiSettings = field(default_factory=RoiSettings)
 
@@ -137,6 +145,14 @@ def _load_buffs(raw: dict) -> BuffSettings:
     )
 
 
+def _load_combat(raw: dict) -> CombatSettings:
+    defaults = CombatSettings()
+    return CombatSettings(
+        attack_enabled=raw.get("attack_enabled", defaults.attack_enabled),
+        attack_cooldown_seconds=raw.get("attack_cooldown_seconds", defaults.attack_cooldown_seconds),
+    )
+
+
 def _load_healing_loop(raw: dict) -> HealingLoopSettings:
     defaults = HealingLoopSettings()
     return HealingLoopSettings(
@@ -177,6 +193,7 @@ def load_profile(path: Path) -> ProfileSettings:
     hotkeys = HotkeysSettings(**raw.get("hotkeys", {}))
     thresholds = ThresholdSettings(**raw.get("thresholds", {}))
     buffs = _load_buffs(raw.get("buffs", {}))
+    combat = _load_combat(raw.get("combat", {}))
     healing_loop = _load_healing_loop(raw.get("healing_loop", {}))
     rois = _load_rois(raw.get("rois", {}))
 
@@ -188,6 +205,7 @@ def load_profile(path: Path) -> ProfileSettings:
         hotkeys=hotkeys,
         thresholds=thresholds,
         buffs=buffs,
+        combat=combat,
         healing_loop=healing_loop,
         rois=rois,
     )
