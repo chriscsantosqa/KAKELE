@@ -14,6 +14,7 @@ authors = [
 dependencies = [
   "pyautogui>=0.9.54",
   "PyGetWindow>=0.0.9",
+  "pydirectinput>=1.0.4",
   "pytesseract>=0.3.10"
 ]
 
