@@ -23,6 +23,7 @@ class HotkeysSettings:
     heal_mana: str = "F2"
     buff_haste: str = "F3"
     attack_primary: str = "F4"
+    attack_secondary: str = "F5"
 
 
 @dataclass(slots=True)
@@ -42,6 +43,10 @@ class BuffSettings:
 class CombatSettings:
     attack_enabled: bool = False
     attack_cooldown_seconds: float = 0.5
+    secondary_attack_enabled: bool = False
+    secondary_attack_cooldown_seconds: float = 2.0
+    secondary_attack_after_primary_only: bool = True
+    secondary_attack_combo_window_seconds: float = 1.0
     target_confirmation_cycles: int = 2
     target_stability_window: int = 4
     max_target_text_variants: int = 2
@@ -153,6 +158,18 @@ def _load_combat(raw: dict) -> CombatSettings:
     return CombatSettings(
         attack_enabled=raw.get("attack_enabled", defaults.attack_enabled),
         attack_cooldown_seconds=raw.get("attack_cooldown_seconds", defaults.attack_cooldown_seconds),
+        secondary_attack_enabled=raw.get(
+            "secondary_attack_enabled", defaults.secondary_attack_enabled
+        ),
+        secondary_attack_cooldown_seconds=raw.get(
+            "secondary_attack_cooldown_seconds", defaults.secondary_attack_cooldown_seconds
+        ),
+        secondary_attack_after_primary_only=raw.get(
+            "secondary_attack_after_primary_only", defaults.secondary_attack_after_primary_only
+        ),
+        secondary_attack_combo_window_seconds=raw.get(
+            "secondary_attack_combo_window_seconds", defaults.secondary_attack_combo_window_seconds
+        ),
         target_confirmation_cycles=raw.get(
             "target_confirmation_cycles", defaults.target_confirmation_cycles
         ),
