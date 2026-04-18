@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import time
+from collections import deque
 from dataclasses import dataclass
 from typing import Callable
 
 from kakelebot.core.calibration import CalibrationService
 from kakelebot.core.config import ProfileSettings
-from kakelebot.core.window import WindowService
+from kakelebot.core.window import WindowDiscoveryError, WindowService
 from kakelebot.features.healing_runtime import HealingCycleResult, HealingRuntime
 
 
@@ -15,6 +16,8 @@ class HealingLoopResult:
     cycles_completed: int
     last_cycle: HealingCycleResult | None
     terminated_early: bool
+    termination_reason: str | None
+    fail_safe_triggered: bool
 
 
 class HealingLoopRunner:
@@ -28,6 +31,7 @@ class HealingLoopRunner:
         self._calibration_service = calibration_service
         self._healing_runtime = healing_runtime
         self._sleep = time.sleep
+        self._time_provider = time.monotonic
 
     def run(
         self,
@@ -38,26 +42,47 @@ class HealingLoopRunner:
         last_cycle: HealingCycleResult | None = None
         cycles_completed = 0
         terminated_early = False
+        termination_reason: str | None = None
+        fail_safe_triggered = False
 
         cycle_limit = max(1, profile.healing_loop.bootstrap_cycle_limit)
         continuous_mode = profile.healing_loop.continuous_mode
         cycle_index = 0
+        action_times: deque[float] = deque()
+        consecutive_ocr_failures = 0
+        window_missing_since: float | None = None
 
         while True:
             if should_continue is not None and not should_continue():
                 terminated_early = True
+                termination_reason = "stopped-by-user"
                 break
 
             while is_paused is not None and is_paused():
                 if should_continue is not None and not should_continue():
                     terminated_early = True
+                    termination_reason = "stopped-by-user"
                     break
                 self._sleep(0.1)
 
             if terminated_early:
                 break
 
-            window = self._window_service.get_game_window()
+            try:
+                window = self._window_service.get_game_window()
+                window_missing_since = None
+            except WindowDiscoveryError:
+                now = self._time_provider()
+                if window_missing_since is None:
+                    window_missing_since = now
+                if (now - window_missing_since) >= profile.healing_loop.max_window_missing_seconds:
+                    terminated_early = True
+                    termination_reason = "window-missing-timeout"
+                    fail_safe_triggered = True
+                    break
+                self._sleep(profile.healing_loop.polling_interval_seconds)
+                continue
+
             snapshot = self._calibration_service.build_snapshot(window, profile)
 
             last_cycle = self._healing_runtime.execute_cycle(
@@ -73,6 +98,30 @@ class HealingLoopRunner:
             cycles_completed += 1
             cycle_index += 1
 
+            if last_cycle.life_reading is None and last_cycle.mana_reading is None:
+                consecutive_ocr_failures += 1
+            else:
+                consecutive_ocr_failures = 0
+
+            if consecutive_ocr_failures >= profile.healing_loop.max_consecutive_ocr_failures:
+                terminated_early = True
+                termination_reason = "ocr-failure-limit"
+                fail_safe_triggered = True
+                break
+
+            now = self._time_provider()
+            for _ in range(len(last_cycle.actions_executed)):
+                action_times.append(now)
+            one_minute_ago = now - 60.0
+            while action_times and action_times[0] < one_minute_ago:
+                action_times.popleft()
+
+            if len(action_times) > profile.healing_loop.max_actions_per_minute:
+                terminated_early = True
+                termination_reason = "actions-per-minute-limit"
+                fail_safe_triggered = True
+                break
+
             if not continuous_mode and cycle_index >= cycle_limit:
                 break
 
@@ -82,4 +131,6 @@ class HealingLoopRunner:
             cycles_completed=cycles_completed,
             last_cycle=last_cycle,
             terminated_early=terminated_early,
+            termination_reason=termination_reason,
+            fail_safe_triggered=fail_safe_triggered,
         )
