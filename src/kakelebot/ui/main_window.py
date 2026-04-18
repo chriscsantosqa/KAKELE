@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import copy
+import json
 import threading
+from datetime import UTC, datetime
 import tkinter as tk
 from pathlib import Path
 from tkinter import ttk
@@ -13,6 +15,8 @@ from kakelebot.core.session import SessionController, SessionPreviewResult, Sess
 
 
 class MainWindow:
+    _SNAPSHOT_HISTORY_LIMIT = 10
+
     def __init__(
         self,
         session_controller: SessionController,
@@ -27,6 +31,8 @@ class MainWindow:
         self._global_hotkeys = GlobalHotkeyService()
         self._worker: threading.Thread | None = None
         self._last_session_result: SessionRunResult | None = None
+        self._last_preview_result: SessionPreviewResult | None = None
+        self._last_preview_profile: ProfileSettings | None = None
         self._life_preview_image = None
         self._mana_preview_image = None
         self._life_processed_preview_image = None
@@ -248,7 +254,8 @@ class MainWindow:
         ttk.Button(actions, text="Resume", command=self._on_resume).pack(fill=tk.X, pady=(0, 6))
         ttk.Button(actions, text="Stop", command=self._on_stop).pack(fill=tk.X, pady=(0, 6))
         ttk.Button(actions, text="Refresh ROI/OCR preview", command=self._on_refresh_preview).pack(fill=tk.X, pady=(0, 6))
-        ttk.Button(actions, text="Adopt current window as baseline", command=self._on_adopt_current_window_baseline).pack(fill=tk.X)
+        ttk.Button(actions, text="Adopt current window as baseline", command=self._on_adopt_current_window_baseline).pack(fill=tk.X, pady=(0, 6))
+        ttk.Button(actions, text="Save calibration snapshot", command=self._on_save_calibration_snapshot).pack(fill=tk.X)
 
     def _build_config_editor(self, parent: ttk.Frame) -> None:
         editor = ttk.LabelFrame(parent, text="Profile configuration", padding=12)
@@ -736,6 +743,8 @@ class MainWindow:
         try:
             preview_profile = self._build_preview_profile_from_form()
             preview = self._session_controller.capture_preview(preview_profile)
+            self._last_preview_result = preview
+            self._last_preview_profile = preview_profile
             self._apply_preview(preview, preview_profile)
             if preview.error_message:
                 self._append_output(f"Preview refresh failed: {preview.error_message}\n")
@@ -764,6 +773,8 @@ class MainWindow:
         try:
             preview_profile = self._build_preview_profile_from_form()
             preview = self._session_controller.capture_preview(preview_profile)
+            self._last_preview_result = preview
+            self._last_preview_profile = preview_profile
             if preview.error_message or preview.window is None:
                 self._apply_preview(preview, preview_profile)
                 self._append_output(f"Adopt baseline failed: {preview.error_message}\n")
@@ -773,12 +784,244 @@ class MainWindow:
             self._profile.resolution_width = preview.window.width
             self._profile.resolution_height = preview.window.height
             save_profile(self._profile_path, self._profile)
-            self._apply_preview(self._session_controller.capture_preview(self._profile), self._profile)
+            refreshed_preview = self._session_controller.capture_preview(self._profile)
+            self._last_preview_result = refreshed_preview
+            self._last_preview_profile = copy.deepcopy(self._profile)
+            self._apply_preview(refreshed_preview, self._profile)
             self._append_output(
                 f"Current window adopted as baseline: {self._profile.resolution_width}x{self._profile.resolution_height}.\n"
             )
         except ValueError as error:
             self._append_output(f"Adopt baseline failed: {error}\n")
+
+    def _on_save_calibration_snapshot(self) -> None:
+        try:
+            if self._last_preview_result is None or self._last_preview_profile is None:
+                self._on_refresh_preview()
+            if self._last_preview_result is None or self._last_preview_profile is None:
+                self._append_output("Calibration snapshot save failed: no preview available.\n")
+                return
+            if self._last_preview_result.error_message:
+                self._append_output(
+                    f"Calibration snapshot save failed: {self._last_preview_result.error_message}\n"
+                )
+                return
+
+            snapshot_dir = self._snapshot_root_dir() / self._timestamp_slug()
+            snapshot_dir.mkdir(parents=True, exist_ok=False)
+            previous_metadata = self._load_latest_snapshot_metadata()
+            metadata = self._build_snapshot_metadata(
+                self._last_preview_result,
+                self._last_preview_profile,
+                snapshot_dir.name,
+                previous_metadata,
+            )
+            self._save_preview_images(self._last_preview_result, snapshot_dir)
+
+            metadata_path = snapshot_dir / "metadata.json"
+            metadata_path.write_text(
+                json.dumps(metadata, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            latest_path = self._snapshot_root_dir() / "latest.json"
+            latest_path.parent.mkdir(parents=True, exist_ok=True)
+            latest_path.write_text(
+                json.dumps(metadata, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            self._trim_snapshot_history()
+            self._append_output(f"Calibration snapshot saved to {snapshot_dir}.\n")
+        except ValueError as error:
+            self._append_output(f"Calibration snapshot save failed: {error}\n")
+        except OSError as error:
+            self._append_output(f"Calibration snapshot save failed: {error}\n")
+
+    def _save_preview_images(self, preview: SessionPreviewResult, snapshot_dir: Path) -> None:
+        life_preview = preview.life_preview
+        mana_preview = preview.mana_preview
+        target_preview = preview.target_preview
+        image_map = {
+            "life_original.png": life_preview.original_image if life_preview is not None else None,
+            "life_processed.png": life_preview.processed_image if life_preview is not None else None,
+            "mana_original.png": mana_preview.original_image if mana_preview is not None else None,
+            "mana_processed.png": mana_preview.processed_image if mana_preview is not None else None,
+            "target_original.png": target_preview.original_image if target_preview is not None else None,
+            "target_processed.png": target_preview.processed_image if target_preview is not None else None,
+        }
+        for file_name, image in image_map.items():
+            if image is not None and hasattr(image, "save"):
+                image.save(snapshot_dir / file_name)
+
+    def _build_snapshot_metadata(
+        self,
+        preview: SessionPreviewResult,
+        preview_profile: ProfileSettings,
+        snapshot_name: str,
+        previous_metadata: dict | None,
+    ) -> dict:
+        window = preview.window
+        calibration = preview.calibration_snapshot
+        resolution_validation = preview.resolution_validation
+        life_preview = preview.life_preview
+        mana_preview = preview.mana_preview
+        target_preview = preview.target_preview
+
+        return {
+            "snapshot_name": snapshot_name,
+            "created_at_utc": datetime.now(UTC).isoformat(),
+            "profile": {
+                "name": preview_profile.name,
+                "resolution_width": preview_profile.resolution_width,
+                "resolution_height": preview_profile.resolution_height,
+                "ui_scale": preview_profile.ui_scale,
+            },
+            "window": {
+                "title": window.title if window is not None else None,
+                "width": window.width if window is not None else None,
+                "height": window.height if window is not None else None,
+                "left": window.left if window is not None else None,
+                "top": window.top if window is not None else None,
+            },
+            "resolution_validation": {
+                "profile_resolution_set": resolution_validation.profile_resolution_set if resolution_validation is not None else None,
+                "matches_profile": resolution_validation.matches_profile if resolution_validation is not None else None,
+                "message": resolution_validation.message if resolution_validation is not None else None,
+            },
+            "roi_screen_regions": {
+                "life": self._screen_region_payload(calibration.life_bar if calibration is not None else None),
+                "mana": self._screen_region_payload(calibration.mana_bar if calibration is not None else None),
+                "target": self._screen_region_payload(calibration.target_status if calibration is not None else None),
+            },
+            "roi_ratios": {
+                "life": self._roi_ratio_payload(preview_profile.rois.life_bar),
+                "mana": self._roi_ratio_payload(preview_profile.rois.mana_bar),
+                "target": self._roi_ratio_payload(preview_profile.rois.target_status),
+            },
+            "ocr": {
+                "life": self._ocr_preview_payload(life_preview),
+                "mana": self._ocr_preview_payload(mana_preview),
+                "target": self._target_preview_payload(target_preview),
+            },
+            "comparison_to_previous": self._build_snapshot_comparison(preview, previous_metadata),
+        }
+
+    def _build_snapshot_comparison(
+        self,
+        preview: SessionPreviewResult,
+        previous_metadata: dict | None,
+    ) -> dict | None:
+        if previous_metadata is None:
+            return None
+
+        previous_ocr = previous_metadata.get("ocr", {})
+        previous_validation = previous_metadata.get("resolution_validation") or {}
+        current_life_text = preview.life_preview.normalized_text if preview.life_preview is not None else None
+        current_mana_text = preview.mana_preview.normalized_text if preview.mana_preview is not None else None
+        current_target_text = preview.target_preview.normalized_text if preview.target_preview is not None else None
+        current_target_detected = preview.target_preview.has_target if preview.target_preview is not None else None
+        current_validation_message = (
+            preview.resolution_validation.message
+            if preview.resolution_validation is not None
+            else None
+        )
+        current_matches_profile = (
+            preview.resolution_validation.matches_profile
+            if preview.resolution_validation is not None
+            else None
+        )
+
+        return {
+            "previous_snapshot_name": previous_metadata.get("snapshot_name"),
+            "life_text_changed": current_life_text != ((previous_ocr.get("life") or {}).get("normalized_text")),
+            "mana_text_changed": current_mana_text != ((previous_ocr.get("mana") or {}).get("normalized_text")),
+            "target_text_changed": current_target_text != ((previous_ocr.get("target") or {}).get("normalized_text")),
+            "target_detection_changed": current_target_detected != ((previous_ocr.get("target") or {}).get("has_target")),
+            "resolution_validation_changed": current_validation_message != previous_validation.get("message"),
+            "matches_profile_changed": current_matches_profile != previous_validation.get("matches_profile"),
+        }
+
+    def _load_latest_snapshot_metadata(self) -> dict | None:
+        latest_path = self._snapshot_root_dir() / "latest.json"
+        if not latest_path.exists():
+            return None
+        try:
+            return json.loads(latest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+
+    def _snapshot_root_dir(self) -> Path:
+        return self._profile_path.parent / "_snapshots" / self._profile.name
+
+    def _trim_snapshot_history(self) -> None:
+        snapshot_root = self._snapshot_root_dir()
+        snapshot_dirs = sorted(
+            [path for path in snapshot_root.iterdir() if path.is_dir()],
+            key=lambda path: path.name,
+            reverse=True,
+        )
+        for obsolete_dir in snapshot_dirs[self._SNAPSHOT_HISTORY_LIMIT :]:
+            for child in sorted(obsolete_dir.rglob("*"), reverse=True):
+                if child.is_file():
+                    child.unlink()
+                elif child.is_dir():
+                    child.rmdir()
+            obsolete_dir.rmdir()
+
+    @staticmethod
+    def _timestamp_slug() -> str:
+        return datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+
+    @staticmethod
+    def _screen_region_payload(region) -> dict | None:
+        if region is None:
+            return None
+        return {
+            "name": region.name,
+            "left": region.left,
+            "top": region.top,
+            "width": region.width,
+            "height": region.height,
+        }
+
+    @staticmethod
+    def _roi_ratio_payload(region) -> dict:
+        return {
+            "left_ratio": region.left_ratio,
+            "top_ratio": region.top_ratio,
+            "width_ratio": region.width_ratio,
+            "height_ratio": region.height_ratio,
+        }
+
+    @staticmethod
+    def _ocr_preview_payload(preview) -> dict | None:
+        if preview is None:
+            return None
+        reading = preview.reading
+        return {
+            "raw_text": preview.raw_text,
+            "normalized_text": preview.normalized_text,
+            "reading": {
+                "current": reading.current,
+                "maximum": reading.maximum,
+                "percentage": reading.percentage,
+                "source_text": reading.source_text,
+            }
+            if reading is not None
+            else None,
+        }
+
+    @staticmethod
+    def _target_preview_payload(preview) -> dict | None:
+        if preview is None:
+            return None
+        return {
+            "raw_text": preview.raw_text,
+            "normalized_text": preview.normalized_text,
+            "has_target": preview.has_target,
+            "reason": preview.reason,
+            "activity_ratio": preview.activity_ratio,
+            "contrast_score": preview.contrast_score,
+        }
 
     def _on_load_selected_profile(self) -> None:
         if self._profile_manager is None:
@@ -1172,6 +1415,8 @@ class MainWindow:
         try:
             self._sync_form_into_profile(self._profile)
             preview = self._session_controller.capture_preview(self._profile)
+            self._last_preview_result = preview
+            self._last_preview_profile = copy.deepcopy(self._profile)
             self._apply_preview(preview, self._profile)
             if preview.error_message:
                 self._append_output(f"ROI calibration save failed: {preview.error_message}\n")
