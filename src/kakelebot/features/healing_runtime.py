@@ -18,6 +18,9 @@ class HealingCycleResult:
     actions_executed: tuple[KeyAction, ...]
     suppressed_actions: tuple[str, ...]
     haste_status: str
+    has_target: bool
+    target_reason: str
+    target_text: str
 
 
 class HealingRuntime:
@@ -54,9 +57,11 @@ class HealingRuntime:
     ) -> HealingCycleResult:
         life_image = self._capture.capture(snapshot.life_bar)
         mana_image = self._capture.capture(snapshot.mana_bar)
+        target_image = self._capture.capture(snapshot.target_status)
 
         life_reading = self._vision.read_bar_value(life_image)
         mana_reading = self._vision.read_bar_value(mana_image)
+        target_preview = self._vision.build_target_preview(target_image)
 
         decision = self._healing.evaluate(
             life=life_reading,
@@ -107,6 +112,9 @@ class HealingRuntime:
             actions_executed=tuple(executed_actions),
             suppressed_actions=tuple(suppressed_actions),
             haste_status=haste_status,
+            has_target=target_preview.has_target,
+            target_reason=target_preview.reason,
+            target_text=target_preview.normalized_text,
         )
 
     def _try_execute_haste(
