@@ -115,6 +115,21 @@ class SessionController:
             calibration_snapshot = self._calibration_service.build_snapshot(window, profile)
             resolution_validation = self._calibration_service.validate_window_resolution(profile, window)
 
+            if not resolution_validation.matches_profile:
+                with self._lock:
+                    self._status = SessionStatus(SessionState.FAILED, resolution_validation.message)
+                    result = SessionRunResult(
+                        status=self._status,
+                        window=window,
+                        whole_window_region=whole_window_region,
+                        calibration_snapshot=calibration_snapshot,
+                        resolution_validation=resolution_validation,
+                        healing_loop_result=None,
+                        error_message=resolution_validation.message,
+                    )
+                    self._last_result = result
+                    return result
+
             healing_loop_result = self._healing_loop.run(
                 profile,
                 should_continue=self._should_continue,
