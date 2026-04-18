@@ -33,8 +33,8 @@ class MainWindow:
 
         self.root = tk.Tk()
         self.root.title("KakeleBot Next")
-        self.root.geometry("1280x940")
-        self.root.minsize(1120, 800)
+        self.root.geometry("1280x980")
+        self.root.minsize(1120, 820)
 
         self._status_var = tk.StringVar(value="idle")
         self._profile_var = tk.StringVar(value=f"profile: {profile.name}")
@@ -58,6 +58,15 @@ class MainWindow:
             value=str(profile.healing_loop.bootstrap_cycle_limit)
         )
         self._continuous_mode_var = tk.BooleanVar(value=profile.healing_loop.continuous_mode)
+        self._max_actions_per_minute_var = tk.StringVar(
+            value=str(profile.healing_loop.max_actions_per_minute)
+        )
+        self._max_consecutive_ocr_failures_var = tk.StringVar(
+            value=str(profile.healing_loop.max_consecutive_ocr_failures)
+        )
+        self._max_window_missing_seconds_var = tk.StringVar(
+            value=str(profile.healing_loop.max_window_missing_seconds)
+        )
         self._start_stop_hotkey_var = tk.StringVar(value=profile.hotkeys.start_stop)
         self._pause_resume_hotkey_var = tk.StringVar(value=profile.hotkeys.pause_resume)
         self._heal_life_hotkey_var = tk.StringVar(value=profile.hotkeys.heal_life)
@@ -78,6 +87,8 @@ class MainWindow:
         self._diag_actions_var = tk.StringVar(value="actions executed: -")
         self._diag_suppressed_var = tk.StringVar(value="actions suppressed: -")
         self._diag_terminated_var = tk.StringVar(value="terminated early: -")
+        self._diag_termination_reason_var = tk.StringVar(value="termination reason: -")
+        self._diag_fail_safe_var = tk.StringVar(value="fail-safe triggered: -")
 
         self._preview_window_var = tk.StringVar(value="window: -")
         self._preview_life_roi_var = tk.StringVar(value="life roi: -")
@@ -172,6 +183,9 @@ class MainWindow:
             ("Life cooldown (s)", self._life_cooldown_var),
             ("Mana cooldown (s)", self._mana_cooldown_var),
             ("Cycle limit", self._cycle_limit_var),
+            ("Max actions/min", self._max_actions_per_minute_var),
+            ("Max OCR failures", self._max_consecutive_ocr_failures_var),
+            ("Window missing (s)", self._max_window_missing_seconds_var),
             ("Start/Stop hotkey", self._start_stop_hotkey_var),
             ("Pause/Resume hotkey", self._pause_resume_hotkey_var),
             ("Life hotkey", self._heal_life_hotkey_var),
@@ -266,6 +280,8 @@ class MainWindow:
             self._diag_actions_var,
             self._diag_suppressed_var,
             self._diag_terminated_var,
+            self._diag_termination_reason_var,
+            self._diag_fail_safe_var,
         ]
         for variable in labels:
             ttk.Label(diagnostics, textvariable=variable, wraplength=860, justify=tk.LEFT).pack(
@@ -356,7 +372,8 @@ class MainWindow:
             self._selected_profile_var.set(profile_names[0])
 
     def _update_diagnostics(self, result: SessionRunResult) -> None:
-        last_cycle = result.healing_loop_result.last_cycle if result.healing_loop_result else None
+        loop_result = result.healing_loop_result
+        last_cycle = loop_result.last_cycle if loop_result else None
 
         if last_cycle is None:
             self._diag_decision_var.set("decision: -")
@@ -365,6 +382,8 @@ class MainWindow:
             self._diag_actions_var.set("actions executed: -")
             self._diag_suppressed_var.set("actions suppressed: -")
             self._diag_terminated_var.set("terminated early: -")
+            self._diag_termination_reason_var.set("termination reason: -")
+            self._diag_fail_safe_var.set("fail-safe triggered: -")
             return
 
         self._diag_decision_var.set(f"decision: {last_cycle.decision.reason}")
@@ -378,11 +397,15 @@ class MainWindow:
         )
         self._diag_terminated_var.set(
             "terminated early: "
-            + (
-                str(result.healing_loop_result.terminated_early)
-                if result.healing_loop_result is not None
-                else "-"
-            )
+            + (str(loop_result.terminated_early) if loop_result is not None else "-")
+        )
+        self._diag_termination_reason_var.set(
+            "termination reason: "
+            + ((loop_result.termination_reason or "none") if loop_result is not None else "-")
+        )
+        self._diag_fail_safe_var.set(
+            "fail-safe triggered: "
+            + (str(loop_result.fail_safe_triggered) if loop_result is not None else "-")
         )
 
     def _configure_global_hotkeys(self) -> None:
@@ -508,6 +531,9 @@ class MainWindow:
         self._mana_cooldown_var.set(str(profile.healing_loop.mana_cooldown_seconds))
         self._cycle_limit_var.set(str(profile.healing_loop.bootstrap_cycle_limit))
         self._continuous_mode_var.set(profile.healing_loop.continuous_mode)
+        self._max_actions_per_minute_var.set(str(profile.healing_loop.max_actions_per_minute))
+        self._max_consecutive_ocr_failures_var.set(str(profile.healing_loop.max_consecutive_ocr_failures))
+        self._max_window_missing_seconds_var.set(str(profile.healing_loop.max_window_missing_seconds))
         self._start_stop_hotkey_var.set(profile.hotkeys.start_stop)
         self._pause_resume_hotkey_var.set(profile.hotkeys.pause_resume)
         self._heal_life_hotkey_var.set(profile.hotkeys.heal_life)
@@ -616,6 +642,15 @@ class MainWindow:
             self._cycle_limit_var.get(), minimum=1, maximum=9999, field_name="Cycle limit"
         )
         profile.healing_loop.continuous_mode = bool(self._continuous_mode_var.get())
+        profile.healing_loop.max_actions_per_minute = self._parse_int(
+            self._max_actions_per_minute_var.get(), minimum=1, maximum=9999, field_name="Max actions/min"
+        )
+        profile.healing_loop.max_consecutive_ocr_failures = self._parse_int(
+            self._max_consecutive_ocr_failures_var.get(), minimum=1, maximum=9999, field_name="Max OCR failures"
+        )
+        profile.healing_loop.max_window_missing_seconds = self._parse_float(
+            self._max_window_missing_seconds_var.get(), minimum=0.5, field_name="Window missing (s)"
+        )
         profile.hotkeys.start_stop = self._start_stop_hotkey_var.get().strip().upper()
         profile.hotkeys.pause_resume = self._pause_resume_hotkey_var.get().strip().upper()
         profile.hotkeys.heal_life = self._heal_life_hotkey_var.get().strip().upper()
@@ -695,12 +730,10 @@ class MainWindow:
                 f"window={result.window.title} {result.window.width}x{result.window.height}"
             )
         if result.healing_loop_result is not None:
-            parts.append(
-                f"cycles={result.healing_loop_result.cycles_completed}"
-            )
-            parts.append(
-                f"terminated_early={result.healing_loop_result.terminated_early}"
-            )
+            parts.append(f"cycles={result.healing_loop_result.cycles_completed}")
+            parts.append(f"terminated_early={result.healing_loop_result.terminated_early}")
+            parts.append(f"termination_reason={result.healing_loop_result.termination_reason}")
+            parts.append(f"fail_safe_triggered={result.healing_loop_result.fail_safe_triggered}")
             parts.append(f"last_cycle={result.healing_loop_result.last_cycle}")
         return "\n".join(parts) + "\n\n"
 
