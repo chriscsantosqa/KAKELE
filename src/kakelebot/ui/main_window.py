@@ -6,7 +6,7 @@ from pathlib import Path
 from tkinter import ttk
 
 from kakelebot.core.config import ProfileSettings, save_profile
-from kakelebot.core.session import SessionController, SessionRunResult, SessionState
+from kakelebot.core.session import SessionController, SessionPreviewResult, SessionRunResult, SessionState
 
 
 class MainWindow:
@@ -21,11 +21,13 @@ class MainWindow:
         self._profile_path = profile_path
         self._worker: threading.Thread | None = None
         self._last_session_result: SessionRunResult | None = None
+        self._life_preview_image = None
+        self._mana_preview_image = None
 
         self.root = tk.Tk()
         self.root.title("KakeleBot Next")
-        self.root.geometry("1120x700")
-        self.root.minsize(960, 620)
+        self.root.geometry("1180x760")
+        self.root.minsize(1000, 680)
 
         self._status_var = tk.StringVar(value="idle")
         self._profile_var = tk.StringVar(value=f"profile: {profile.name}")
@@ -56,6 +58,10 @@ class MainWindow:
         self._diag_suppressed_var = tk.StringVar(value="actions suppressed: -")
         self._diag_terminated_var = tk.StringVar(value="terminated early: -")
 
+        self._preview_window_var = tk.StringVar(value="window: -")
+        self._preview_life_roi_var = tk.StringVar(value="life roi: -")
+        self._preview_mana_roi_var = tk.StringVar(value="mana roi: -")
+
         self._build_layout()
         self._schedule_refresh()
 
@@ -70,7 +76,7 @@ class MainWindow:
         ttk.Label(header, textvariable=self._profile_var).pack(anchor=tk.W)
         ttk.Label(header, textvariable=self._status_var).pack(anchor=tk.W)
         ttk.Label(header, textvariable=self._cycles_var).pack(anchor=tk.W)
-        ttk.Label(header, textvariable=self._message_var, wraplength=1040).pack(anchor=tk.W, pady=(6, 0))
+        ttk.Label(header, textvariable=self._message_var, wraplength=1120).pack(anchor=tk.W, pady=(6, 0))
 
         body = ttk.Frame(container)
         body.pack(fill=tk.BOTH, expand=True)
@@ -85,6 +91,7 @@ class MainWindow:
         right_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         self._build_diagnostics(right_panel)
+        self._build_preview_panel(right_panel)
         self._build_output(right_panel)
 
     def _build_actions(self, parent: ttk.Frame) -> None:
@@ -94,7 +101,8 @@ class MainWindow:
         ttk.Button(actions, text="Start", command=self._on_start).pack(fill=tk.X, pady=(0, 6))
         ttk.Button(actions, text="Pause", command=self._on_pause).pack(fill=tk.X, pady=(0, 6))
         ttk.Button(actions, text="Resume", command=self._on_resume).pack(fill=tk.X, pady=(0, 6))
-        ttk.Button(actions, text="Stop", command=self._on_stop).pack(fill=tk.X)
+        ttk.Button(actions, text="Stop", command=self._on_stop).pack(fill=tk.X, pady=(0, 6))
+        ttk.Button(actions, text="Refresh ROI preview", command=self._on_refresh_preview).pack(fill=tk.X)
 
     def _build_config_editor(self, parent: ttk.Frame) -> None:
         editor = ttk.LabelFrame(parent, text="Profile configuration", padding=12)
@@ -143,13 +151,34 @@ class MainWindow:
             self._diag_terminated_var,
         ]
         for variable in labels:
-            ttk.Label(diagnostics, textvariable=variable, wraplength=700, justify=tk.LEFT).pack(
+            ttk.Label(diagnostics, textvariable=variable, wraplength=860, justify=tk.LEFT).pack(
                 anchor=tk.W,
                 pady=2,
             )
 
+    def _build_preview_panel(self, parent: ttk.Frame) -> None:
+        preview = ttk.LabelFrame(parent, text="ROI Preview", padding=12)
+        preview.pack(fill=tk.X, pady=(0, 12))
+
+        ttk.Label(preview, textvariable=self._preview_window_var, wraplength=860).pack(anchor=tk.W)
+        ttk.Label(preview, textvariable=self._preview_life_roi_var, wraplength=860).pack(anchor=tk.W, pady=(4, 0))
+        ttk.Label(preview, textvariable=self._preview_mana_roi_var, wraplength=860).pack(anchor=tk.W, pady=(2, 8))
+
+        images = ttk.Frame(preview)
+        images.pack(fill=tk.X)
+
+        life_frame = ttk.LabelFrame(images, text="Life ROI", padding=8)
+        life_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8))
+        self._life_preview_label = ttk.Label(life_frame, text="No preview")
+        self._life_preview_label.pack(fill=tk.BOTH, expand=True)
+
+        mana_frame = ttk.LabelFrame(images, text="Mana ROI", padding=8)
+        mana_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self._mana_preview_label = ttk.Label(mana_frame, text="No preview")
+        self._mana_preview_label.pack(fill=tk.BOTH, expand=True)
+
     def _build_output(self, parent: ttk.Frame) -> None:
-        self._output = tk.Text(parent, height=22, wrap=tk.WORD)
+        self._output = tk.Text(parent, height=18, wrap=tk.WORD)
         self._output.pack(fill=tk.BOTH, expand=True)
         self._output.insert(tk.END, "UI initialized.\n")
         self._output.configure(state=tk.DISABLED)
@@ -238,6 +267,52 @@ class MainWindow:
     def _on_stop(self) -> None:
         self._session_controller.stop()
         self._append_output("Stop requested.\n")
+
+    def _on_refresh_preview(self) -> None:
+        preview = self._session_controller.capture_preview(self._profile)
+        self._apply_preview(preview)
+        if preview.error_message:
+            self._append_output(f"Preview refresh failed: {preview.error_message}\n")
+        else:
+            self._append_output("ROI preview refreshed.\n")
+
+    def _apply_preview(self, preview: SessionPreviewResult) -> None:
+        if preview.error_message or preview.window is None or preview.calibration_snapshot is None:
+            self._preview_window_var.set("window: unavailable")
+            self._preview_life_roi_var.set("life roi: unavailable")
+            self._preview_mana_roi_var.set("mana roi: unavailable")
+            self._life_preview_label.configure(image="", text="No preview")
+            self._mana_preview_label.configure(image="", text="No preview")
+            self._life_preview_image = None
+            self._mana_preview_image = None
+            return
+
+        snapshot = preview.calibration_snapshot
+        window = preview.window
+        self._preview_window_var.set(
+            f"window: {window.title} {window.width}x{window.height} at ({window.left}, {window.top})"
+        )
+        self._preview_life_roi_var.set(
+            f"life roi: x={snapshot.life_bar.left}, y={snapshot.life_bar.top}, "
+            f"w={snapshot.life_bar.width}, h={snapshot.life_bar.height}"
+        )
+        self._preview_mana_roi_var.set(
+            f"mana roi: x={snapshot.mana_bar.left}, y={snapshot.mana_bar.top}, "
+            f"w={snapshot.mana_bar.width}, h={snapshot.mana_bar.height}"
+        )
+
+        self._life_preview_image = self._to_tk_preview(preview.life_image)
+        self._mana_preview_image = self._to_tk_preview(preview.mana_image)
+
+        if self._life_preview_image is not None:
+            self._life_preview_label.configure(image=self._life_preview_image, text="")
+        else:
+            self._life_preview_label.configure(image="", text="Preview unavailable")
+
+        if self._mana_preview_image is not None:
+            self._mana_preview_label.configure(image=self._mana_preview_image, text="")
+        else:
+            self._mana_preview_label.configure(image="", text="Preview unavailable")
 
     def _on_save_profile(self) -> None:
         try:
@@ -341,6 +416,19 @@ class MainWindow:
         if value < minimum:
             raise ValueError(f"{field_name} must be >= {minimum}.")
         return value
+
+    @staticmethod
+    def _to_tk_preview(image):
+        if image is None:
+            return None
+        try:
+            from PIL import ImageTk
+        except ImportError:
+            return None
+
+        preview_image = image.copy()
+        preview_image.thumbnail((360, 120))
+        return ImageTk.PhotoImage(preview_image)
 
     def run(self) -> None:
         self.root.mainloop()
