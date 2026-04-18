@@ -26,16 +26,38 @@ class BarReading:
         return (self.current / self.maximum) * 100
 
 
+@dataclass(frozen=True, slots=True)
+class OcrPreview:
+    original_image: object
+    processed_image: object
+    raw_text: str
+    normalized_text: str
+    reading: BarReading | None
+
+
 class VisionService:
     def __init__(self, ocr_adapter: OcrAdapter, preprocessor: ImagePreprocessor | None = None) -> None:
         self._ocr = ocr_adapter
         self._preprocessor = preprocessor or ImagePreprocessor()
 
     def read_bar_value(self, image) -> BarReading | None:
+        return self.build_preview(image).reading
+
+    def build_preview(self, image) -> OcrPreview:
         prepared_image = self._preprocessor.preprocess_bar(image)
         raw_text = self._ocr.image_to_string(prepared_image, config="--psm 7")
         normalized = self._normalize(raw_text)
-        numbers = self._extract_numbers(normalized)
+        reading = self._parse_reading(normalized)
+        return OcrPreview(
+            original_image=image,
+            processed_image=prepared_image,
+            raw_text=raw_text,
+            normalized_text=normalized,
+            reading=reading,
+        )
+
+    def _parse_reading(self, normalized_text: str) -> BarReading | None:
+        numbers = self._extract_numbers(normalized_text)
 
         if len(numbers) < 2:
             return None
@@ -51,7 +73,7 @@ class VisionService:
         return BarReading(
             current=current,
             maximum=maximum,
-            source_text=normalized,
+            source_text=normalized_text,
             confidence_ok=confidence_ok,
         )
 
