@@ -28,7 +28,13 @@ class HotkeysSettings:
 class ThresholdSettings:
     life_percent: int = 60
     mana_percent: int = 40
-    haste_interval_seconds: int = 30
+
+
+@dataclass(slots=True)
+class BuffSettings:
+    haste_enabled: bool = False
+    haste_interval_seconds: float = 30.0
+    haste_cooldown_seconds: float = 1.0
 
 
 @dataclass(slots=True)
@@ -75,6 +81,7 @@ class ProfileSettings:
     ui_scale: float = 1.0
     hotkeys: HotkeysSettings = field(default_factory=HotkeysSettings)
     thresholds: ThresholdSettings = field(default_factory=ThresholdSettings)
+    buffs: BuffSettings = field(default_factory=BuffSettings)
     healing_loop: HealingLoopSettings = field(default_factory=HealingLoopSettings)
     rois: RoiSettings = field(default_factory=RoiSettings)
 
@@ -121,6 +128,15 @@ def _load_rois(raw: dict) -> RoiSettings:
     )
 
 
+def _load_buffs(raw: dict) -> BuffSettings:
+    defaults = BuffSettings()
+    return BuffSettings(
+        haste_enabled=raw.get("haste_enabled", defaults.haste_enabled),
+        haste_interval_seconds=raw.get("haste_interval_seconds", defaults.haste_interval_seconds),
+        haste_cooldown_seconds=raw.get("haste_cooldown_seconds", defaults.haste_cooldown_seconds),
+    )
+
+
 def _load_healing_loop(raw: dict) -> HealingLoopSettings:
     defaults = HealingLoopSettings()
     return HealingLoopSettings(
@@ -160,6 +176,7 @@ def load_profile(path: Path) -> ProfileSettings:
     raw = json.loads(path.read_text(encoding="utf-8"))
     hotkeys = HotkeysSettings(**raw.get("hotkeys", {}))
     thresholds = ThresholdSettings(**raw.get("thresholds", {}))
+    buffs = _load_buffs(raw.get("buffs", {}))
     healing_loop = _load_healing_loop(raw.get("healing_loop", {}))
     rois = _load_rois(raw.get("rois", {}))
 
@@ -170,6 +187,7 @@ def load_profile(path: Path) -> ProfileSettings:
         ui_scale=raw.get("ui_scale", 1.0),
         hotkeys=hotkeys,
         thresholds=thresholds,
+        buffs=buffs,
         healing_loop=healing_loop,
         rois=rois,
     )
