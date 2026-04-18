@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from threading import RLock
-from typing import Any
 
 from kakelebot.core.calibration import CalibrationService, CalibrationSnapshot
 from kakelebot.core.capture import CaptureService, ScreenRegion
 from kakelebot.core.config import ProfileSettings
+from kakelebot.core.vision import OcrPreview, VisionService
 from kakelebot.core.window import WindowDiscoveryError, WindowInfo, WindowService
 from kakelebot.features.healing_loop import HealingLoopResult, HealingLoopRunner
 
@@ -42,8 +42,8 @@ class SessionPreviewResult:
     status: SessionStatus
     window: WindowInfo | None
     calibration_snapshot: CalibrationSnapshot | None
-    life_image: Any | None
-    mana_image: Any | None
+    life_preview: OcrPreview | None
+    mana_preview: OcrPreview | None
     error_message: str | None
 
 
@@ -54,11 +54,13 @@ class SessionController:
         capture_service: CaptureService,
         calibration_service: CalibrationService,
         healing_loop: HealingLoopRunner,
+        vision_service: VisionService,
     ) -> None:
         self._window_service = window_service
         self._capture_service = capture_service
         self._calibration_service = calibration_service
         self._healing_loop = healing_loop
+        self._vision_service = vision_service
         self._status = SessionStatus(SessionState.IDLE, "session initialized")
         self._last_result: SessionRunResult | None = None
         self._lock = RLock()
@@ -149,13 +151,15 @@ class SessionController:
             calibration_snapshot = self._calibration_service.build_snapshot(window, profile)
             life_image = self._capture_service.capture(calibration_snapshot.life_bar)
             mana_image = self._capture_service.capture(calibration_snapshot.mana_bar)
+            life_preview = self._vision_service.build_preview(life_image)
+            mana_preview = self._vision_service.build_preview(mana_image)
 
             return SessionPreviewResult(
                 status=SessionStatus(SessionState.IDLE, "preview captured"),
                 window=window,
                 calibration_snapshot=calibration_snapshot,
-                life_image=life_image,
-                mana_image=mana_image,
+                life_preview=life_preview,
+                mana_preview=mana_preview,
                 error_message=None,
             )
         except (WindowDiscoveryError, RuntimeError) as error:
@@ -163,8 +167,8 @@ class SessionController:
                 status=SessionStatus(SessionState.FAILED, str(error)),
                 window=None,
                 calibration_snapshot=None,
-                life_image=None,
-                mana_image=None,
+                life_preview=None,
+                mana_preview=None,
                 error_message=str(error),
             )
 
