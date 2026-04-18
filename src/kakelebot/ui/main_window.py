@@ -42,8 +42,8 @@ class MainWindow:
 
         self.root = tk.Tk()
         self.root.title("KakeleBot Next")
-        self.root.geometry("1280x1260")
-        self.root.minsize(1120, 1020)
+        self.root.geometry("1280x1320")
+        self.root.minsize(1120, 1080)
 
         self._status_var = tk.StringVar(value="idle")
         self._profile_var = tk.StringVar(value=f"profile: {profile.name}")
@@ -157,10 +157,17 @@ class MainWindow:
         self._ocr_life_reading_var = tk.StringVar(value="life reading: -")
         self._ocr_mana_reading_var = tk.StringVar(value="mana reading: -")
 
+        self._snapshot_review_status_var = tk.StringVar(value="latest snapshot: -")
+        self._snapshot_review_resolution_var = tk.StringVar(value="snapshot resolution: -")
+        self._snapshot_review_ocr_var = tk.StringVar(value="snapshot OCR: -")
+        self._snapshot_review_changes_var = tk.StringVar(value="snapshot changes: -")
+        self._snapshot_review_assessment_var = tk.StringVar(value="snapshot assessment: -")
+
         self._build_layout()
         self._refresh_profile_list()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self._configure_global_hotkeys()
+        self._refresh_latest_snapshot_review()
         self._schedule_refresh()
 
     def _build_layout(self) -> None:
@@ -193,6 +200,7 @@ class MainWindow:
 
         self._build_diagnostics(right_panel)
         self._build_preview_panel(right_panel)
+        self._build_snapshot_review(right_panel)
         self._build_output(right_panel)
 
     def _build_profile_manager(self, parent: ttk.Frame) -> None:
@@ -565,6 +573,21 @@ class MainWindow:
         images.columnconfigure(0, weight=1)
         images.columnconfigure(1, weight=1)
 
+    def _build_snapshot_review(self, parent: ttk.Frame) -> None:
+        review = ttk.LabelFrame(parent, text="Latest calibration snapshot", padding=12)
+        review.pack(fill=tk.X, pady=(0, 12))
+
+        ttk.Label(review, textvariable=self._snapshot_review_status_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W)
+        ttk.Label(review, textvariable=self._snapshot_review_resolution_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 0))
+        ttk.Label(review, textvariable=self._snapshot_review_ocr_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 0))
+        ttk.Label(review, textvariable=self._snapshot_review_changes_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 0))
+        ttk.Label(review, textvariable=self._snapshot_review_assessment_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 8))
+
+        actions = ttk.Frame(review)
+        actions.pack(fill=tk.X)
+        ttk.Button(actions, text="Refresh latest snapshot review", command=self._on_refresh_latest_snapshot_review).pack(side=tk.LEFT)
+        ttk.Button(actions, text="Load latest snapshot into form", command=self._on_load_latest_snapshot_context).pack(side=tk.LEFT, padx=(8, 0))
+
     def _build_output(self, parent: ttk.Frame) -> None:
         self._output = tk.Text(parent, height=16, wrap=tk.WORD)
         self._output.pack(fill=tk.BOTH, expand=True)
@@ -830,6 +853,7 @@ class MainWindow:
                 encoding="utf-8",
             )
             self._trim_snapshot_history()
+            self._refresh_latest_snapshot_review()
             self._append_output(f"Calibration snapshot saved to {snapshot_dir}.\n")
         except ValueError as error:
             self._append_output(f"Calibration snapshot save failed: {error}\n")
@@ -1023,6 +1047,164 @@ class MainWindow:
             "contrast_score": preview.contrast_score,
         }
 
+    def _on_refresh_latest_snapshot_review(self) -> None:
+        self._refresh_latest_snapshot_review()
+        metadata = self._load_latest_snapshot_metadata()
+        if metadata is None:
+            self._append_output("No latest calibration snapshot found for current profile.\n")
+            return
+        self._append_output(f"Latest calibration snapshot reviewed: {metadata.get('snapshot_name')}.\n")
+
+    def _refresh_latest_snapshot_review(self) -> None:
+        metadata = self._load_latest_snapshot_metadata()
+        self._apply_snapshot_review(metadata)
+
+    def _apply_snapshot_review(self, metadata: dict | None) -> None:
+        if metadata is None:
+            self._snapshot_review_status_var.set("latest snapshot: none saved for this profile")
+            self._snapshot_review_resolution_var.set("snapshot resolution: unavailable")
+            self._snapshot_review_ocr_var.set("snapshot OCR: unavailable")
+            self._snapshot_review_changes_var.set("snapshot changes: unavailable")
+            self._snapshot_review_assessment_var.set("snapshot assessment: save a snapshot after a valid preview")
+            return
+
+        snapshot_name = metadata.get("snapshot_name") or "unknown"
+        created_at = metadata.get("created_at_utc") or "unknown"
+        profile = metadata.get("profile") or {}
+        validation = metadata.get("resolution_validation") or {}
+        ocr = metadata.get("ocr") or {}
+        comparison = metadata.get("comparison_to_previous") or {}
+
+        self._snapshot_review_status_var.set(
+            f"latest snapshot: {snapshot_name} | created_at_utc={created_at}"
+        )
+        self._snapshot_review_resolution_var.set(
+            "snapshot resolution: "
+            f"{profile.get('resolution_width')}x{profile.get('resolution_height')} "
+            f"| ui_scale={profile.get('ui_scale')} "
+            f"| validation={validation.get('message')}"
+        )
+        self._snapshot_review_ocr_var.set(
+            "snapshot OCR: "
+            f"life='{self._short_snapshot_text((ocr.get('life') or {}).get('normalized_text'))}' | "
+            f"mana='{self._short_snapshot_text((ocr.get('mana') or {}).get('normalized_text'))}' | "
+            f"target='{self._short_snapshot_text((ocr.get('target') or {}).get('normalized_text'))}'"
+        )
+        self._snapshot_review_changes_var.set(
+            "snapshot changes: " + self._snapshot_change_summary(comparison)
+        )
+        self._snapshot_review_assessment_var.set(
+            "snapshot assessment: " + self._snapshot_assessment(metadata)
+        )
+
+    @staticmethod
+    def _short_snapshot_text(text: str | None, max_length: int = 24) -> str:
+        if not text:
+            return "empty"
+        return text if len(text) <= max_length else text[: max_length - 3] + "..."
+
+    @staticmethod
+    def _snapshot_change_summary(comparison: dict) -> str:
+        if not comparison:
+            return "first snapshot for this profile"
+
+        flags = [
+            ("life_text_changed", "life OCR changed"),
+            ("mana_text_changed", "mana OCR changed"),
+            ("target_text_changed", "target OCR changed"),
+            ("target_detection_changed", "target detection changed"),
+            ("resolution_validation_changed", "resolution validation changed"),
+            ("matches_profile_changed", "profile match state changed"),
+        ]
+        changed = [label for key, label in flags if comparison.get(key)]
+        if not changed:
+            return "no significant difference from previous snapshot"
+        return ", ".join(changed)
+
+    @staticmethod
+    def _snapshot_assessment(metadata: dict) -> str:
+        validation = metadata.get("resolution_validation") or {}
+        ocr = metadata.get("ocr") or {}
+        comparison = metadata.get("comparison_to_previous") or {}
+
+        life_text = (ocr.get("life") or {}).get("normalized_text") or ""
+        mana_text = (ocr.get("mana") or {}).get("normalized_text") or ""
+        target_data = ocr.get("target") or {}
+        target_detected = bool(target_data.get("has_target"))
+
+        warnings: list[str] = []
+        positives: list[str] = []
+
+        if validation.get("matches_profile") is False:
+            warnings.append("resolution mismatch remains")
+        elif comparison.get("matches_profile_changed") and validation.get("matches_profile") is True:
+            positives.append("resolution now matches profile")
+
+        if comparison.get("life_text_changed"):
+            if life_text:
+                positives.append("life OCR now returns text")
+            else:
+                warnings.append("life OCR lost text")
+        if comparison.get("mana_text_changed"):
+            if mana_text:
+                positives.append("mana OCR now returns text")
+            else:
+                warnings.append("mana OCR lost text")
+        if comparison.get("target_detection_changed"):
+            if target_detected:
+                positives.append("target became detectable")
+            else:
+                warnings.append("target became undetectable")
+
+        if warnings:
+            return "review required: " + ", ".join(warnings)
+        if positives:
+            return "looks improved: " + ", ".join(positives)
+        return "stable relative to the previous snapshot"
+
+    def _on_load_latest_snapshot_context(self) -> None:
+        metadata = self._load_latest_snapshot_metadata()
+        if metadata is None:
+            self._append_output("Load latest snapshot context failed: no snapshot found for this profile.\n")
+            return
+
+        try:
+            profile_data = metadata.get("profile") or {}
+            roi_ratios = metadata.get("roi_ratios") or {}
+
+            life = roi_ratios.get("life") or {}
+            mana = roi_ratios.get("mana") or {}
+            target = roi_ratios.get("target") or {}
+
+            self._ui_scale_var.set(str(profile_data.get("ui_scale", self._profile.ui_scale)))
+            self._life_left_ratio_var.set(self._format_ratio(float(life.get("left_ratio", self._profile.rois.life_bar.left_ratio))))
+            self._life_top_ratio_var.set(self._format_ratio(float(life.get("top_ratio", self._profile.rois.life_bar.top_ratio))))
+            self._life_width_ratio_var.set(self._format_ratio(float(life.get("width_ratio", self._profile.rois.life_bar.width_ratio))))
+            self._life_height_ratio_var.set(self._format_ratio(float(life.get("height_ratio", self._profile.rois.life_bar.height_ratio))))
+            self._mana_left_ratio_var.set(self._format_ratio(float(mana.get("left_ratio", self._profile.rois.mana_bar.left_ratio))))
+            self._mana_top_ratio_var.set(self._format_ratio(float(mana.get("top_ratio", self._profile.rois.mana_bar.top_ratio))))
+            self._mana_width_ratio_var.set(self._format_ratio(float(mana.get("width_ratio", self._profile.rois.mana_bar.width_ratio))))
+            self._mana_height_ratio_var.set(self._format_ratio(float(mana.get("height_ratio", self._profile.rois.mana_bar.height_ratio))))
+            self._target_left_ratio_var.set(self._format_ratio(float(target.get("left_ratio", self._profile.rois.target_status.left_ratio))))
+            self._target_top_ratio_var.set(self._format_ratio(float(target.get("top_ratio", self._profile.rois.target_status.top_ratio))))
+            self._target_width_ratio_var.set(self._format_ratio(float(target.get("width_ratio", self._profile.rois.target_status.width_ratio))))
+            self._target_height_ratio_var.set(self._format_ratio(float(target.get("height_ratio", self._profile.rois.target_status.height_ratio))))
+
+            if profile_data.get("resolution_width") is not None:
+                self._profile.resolution_width = int(profile_data["resolution_width"])
+            if profile_data.get("resolution_height") is not None:
+                self._profile.resolution_height = int(profile_data["resolution_height"])
+            if profile_data.get("ui_scale") is not None:
+                self._profile.ui_scale = float(profile_data["ui_scale"])
+
+            self._refresh_latest_snapshot_review()
+            self._on_refresh_preview()
+            self._append_output(
+                f"Latest snapshot context loaded into form: {metadata.get('snapshot_name')}.\n"
+            )
+        except (TypeError, ValueError) as error:
+            self._append_output(f"Load latest snapshot context failed: {error}\n")
+
     def _on_load_selected_profile(self) -> None:
         if self._profile_manager is None:
             return
@@ -1161,6 +1343,7 @@ class MainWindow:
         self._target_width_ratio_var.set(str(profile.rois.target_status.width_ratio))
         self._target_height_ratio_var.set(str(profile.rois.target_status.height_ratio))
         self._configure_global_hotkeys()
+        self._refresh_latest_snapshot_review()
 
     def _apply_preview(
         self,
