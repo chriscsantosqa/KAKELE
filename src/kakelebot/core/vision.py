@@ -35,6 +35,18 @@ class OcrPreview:
     reading: BarReading | None
 
 
+@dataclass(frozen=True, slots=True)
+class TargetPreview:
+    original_image: object
+    processed_image: object
+    raw_text: str
+    normalized_text: str
+    has_target: bool
+    reason: str
+    activity_ratio: float
+    contrast_score: float
+
+
 class VisionService:
     def __init__(self, ocr_adapter: OcrAdapter, preprocessor: ImagePreprocessor | None = None) -> None:
         self._ocr = ocr_adapter
@@ -54,6 +66,24 @@ class VisionService:
             raw_text=raw_text,
             normalized_text=normalized,
             reading=reading,
+        )
+
+    def build_target_preview(self, image) -> TargetPreview:
+        prepared_image = self._preprocessor.preprocess_bar(image)
+        raw_text = self._ocr.image_to_string(prepared_image, config="--psm 7")
+        normalized = self._normalize(raw_text)
+        activity_ratio = self._bright_pixel_ratio(prepared_image)
+        contrast_score = self._contrast_score(prepared_image)
+        has_target, reason = self._detect_target_presence(normalized, activity_ratio, contrast_score)
+        return TargetPreview(
+            original_image=image,
+            processed_image=prepared_image,
+            raw_text=raw_text,
+            normalized_text=normalized,
+            has_target=has_target,
+            reason=reason,
+            activity_ratio=activity_ratio,
+            contrast_score=contrast_score,
         )
 
     def _parse_reading(self, normalized_text: str) -> BarReading | None:
@@ -85,3 +115,31 @@ class VisionService:
     def _extract_numbers(text: str) -> list[int]:
         matches = re.findall(r"\d+", text)
         return [int(value) for value in matches]
+
+    @staticmethod
+    def _detect_target_presence(
+        normalized_text: str,
+        activity_ratio: float,
+        contrast_score: float,
+    ) -> tuple[bool, str]:
+        if normalized_text:
+            return True, "ocr-text-detected"
+        if activity_ratio >= 0.10 and contrast_score >= 20.0:
+            return True, "visual-activity-detected"
+        return False, "no-target-signal"
+
+    @staticmethod
+    def _bright_pixel_ratio(image) -> float:
+        histogram = image.histogram()
+        total_pixels = max(1, sum(histogram))
+        bright_pixels = sum(histogram[200:256])
+        return bright_pixels / total_pixels
+
+    @staticmethod
+    def _contrast_score(image) -> float:
+        try:
+            from PIL import ImageStat
+        except ImportError:
+            return 0.0
+        stat = ImageStat.Stat(image)
+        return float(stat.stddev[0]) if stat.stddev else 0.0
