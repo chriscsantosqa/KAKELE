@@ -31,10 +31,12 @@ class MainWindow:
         self._life_processed_preview_image = None
         self._mana_processed_preview_image = None
 
+        preset_values = self._preset_display_values()
+
         self.root = tk.Tk()
         self.root.title("KakeleBot Next")
-        self.root.geometry("1280x1120")
-        self.root.minsize(1120, 940)
+        self.root.geometry("1280x1160")
+        self.root.minsize(1120, 960)
 
         self._status_var = tk.StringVar(value="idle")
         self._profile_var = tk.StringVar(value=f"profile: {profile.name}")
@@ -42,6 +44,9 @@ class MainWindow:
         self._message_var = tk.StringVar(value="session initialized")
         self._selected_profile_var = tk.StringVar(value=profile.name)
         self._new_profile_name_var = tk.StringVar(value="")
+        self._selected_preset_var = tk.StringVar(value=preset_values[0] if preset_values else "")
+        self._preset_profile_name_var = tk.StringVar(value="")
+        self._preset_description_var = tk.StringVar(value=self._preset_description(self._selected_preset_var.get()))
 
         self._life_percent_var = tk.StringVar(value=str(profile.thresholds.life_percent))
         self._mana_percent_var = tk.StringVar(value=str(profile.thresholds.mana_percent))
@@ -196,6 +201,30 @@ class MainWindow:
         ttk.Label(manager, text="Save current as new profile").pack(anchor=tk.W)
         ttk.Entry(manager, textvariable=self._new_profile_name_var).pack(fill=tk.X, pady=(4, 8))
         ttk.Button(manager, text="Save as new profile", command=self._on_save_as_new_profile).pack(
+            fill=tk.X, pady=(0, 12)
+        )
+
+        ttk.Separator(manager, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(0, 12))
+        ttk.Label(manager, text="Combat preset").pack(anchor=tk.W)
+        self._preset_selector = ttk.Combobox(
+            manager,
+            textvariable=self._selected_preset_var,
+            state="readonly",
+            values=self._preset_display_values(),
+            width=24,
+        )
+        self._preset_selector.pack(fill=tk.X, pady=(4, 4))
+        self._preset_selector.bind("<<ComboboxSelected>>", self._on_preset_selected)
+        ttk.Label(manager, textvariable=self._preset_description_var, wraplength=260, justify=tk.LEFT).pack(
+            anchor=tk.W, pady=(0, 8)
+        )
+        ttk.Button(manager, text="Apply preset to current", command=self._on_apply_preset_to_current).pack(
+            fill=tk.X, pady=(0, 8)
+        )
+
+        ttk.Label(manager, text="Save preset as new profile").pack(anchor=tk.W)
+        ttk.Entry(manager, textvariable=self._preset_profile_name_var).pack(fill=tk.X, pady=(4, 8))
+        ttk.Button(manager, text="Create preset profile", command=self._on_save_preset_profile).pack(
             fill=tk.X
         )
 
@@ -473,6 +502,12 @@ class MainWindow:
         elif profile_names:
             self._selected_profile_var.set(profile_names[0])
 
+        if hasattr(self, "_preset_selector"):
+            self._preset_selector["values"] = self._preset_display_values()
+            if not self._selected_preset_var.get() and self._preset_display_values():
+                self._selected_preset_var.set(self._preset_display_values()[0])
+            self._preset_description_var.set(self._preset_description(self._selected_preset_var.get()))
+
     def _update_diagnostics(self, result: SessionRunResult) -> None:
         loop_result = result.healing_loop_result
         last_cycle = loop_result.last_cycle if loop_result else None
@@ -622,6 +657,46 @@ class MainWindow:
             self._append_output(f"New profile created at {profile_path}.\n")
         except ValueError as error:
             self._append_output(f"Create profile failed: {error}\n")
+
+    def _on_apply_preset_to_current(self) -> None:
+        if self._profile_manager is None:
+            return
+        if self._worker is not None and self._worker.is_alive():
+            self._append_output("Apply preset ignored: session is running.\n")
+            return
+        try:
+            self._sync_form_into_profile(self._profile)
+            preset_key = self._selected_preset_key()
+            self._profile_manager.apply_preset_to_current(self._profile, preset_key, self._profile_path)
+            self._load_profile_state(self._profile, self._profile_path)
+            self._refresh_profile_list()
+            self._append_output(f"Preset applied to current profile: {preset_key}.\n")
+        except ValueError as error:
+            self._append_output(f"Apply preset failed: {error}\n")
+
+    def _on_save_preset_profile(self) -> None:
+        if self._profile_manager is None:
+            return
+        if self._worker is not None and self._worker.is_alive():
+            self._append_output("Create preset profile ignored: session is running.\n")
+            return
+        try:
+            self._sync_form_into_profile(self._profile)
+            preset_key = self._selected_preset_key()
+            profile, profile_path = self._profile_manager.save_as_preset(
+                self._profile,
+                preset_key,
+                self._preset_profile_name_var.get(),
+            )
+            self._load_profile_state(profile, profile_path)
+            self._preset_profile_name_var.set("")
+            self._refresh_profile_list()
+            self._append_output(f"Preset profile created at {profile_path}.\n")
+        except ValueError as error:
+            self._append_output(f"Create preset profile failed: {error}\n")
+
+    def _on_preset_selected(self, _event=None) -> None:
+        self._preset_description_var.set(self._preset_description(self._selected_preset_var.get()))
 
     def _on_delete_selected_profile(self) -> None:
         if self._profile_manager is None:
@@ -890,6 +965,28 @@ class MainWindow:
             self._on_refresh_preview()
         except ValueError as error:
             self._append_output(f"ROI calibration save failed: {error}\n")
+
+    def _preset_display_values(self) -> list[str]:
+        if self._profile_manager is None:
+            return []
+        return [preset.label for preset in self._profile_manager.list_presets()]
+
+    def _selected_preset_key(self) -> str:
+        if self._profile_manager is None:
+            raise ValueError("Preset manager unavailable.")
+        selected_label = self._selected_preset_var.get().strip()
+        for preset in self._profile_manager.list_presets():
+            if preset.label == selected_label:
+                return preset.key
+        raise ValueError("Select a valid preset.")
+
+    def _preset_description(self, selected_label: str) -> str:
+        if self._profile_manager is None:
+            return ""
+        for preset in self._profile_manager.list_presets():
+            if preset.label == selected_label:
+                return preset.description
+        return ""
 
     def _clear_preview_images(self) -> None:
         self._life_preview_label.configure(image="", text="No preview")
