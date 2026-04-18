@@ -42,6 +42,9 @@ class BuffSettings:
 class CombatSettings:
     attack_enabled: bool = False
     attack_cooldown_seconds: float = 0.5
+    target_confirmation_cycles: int = 2
+    target_stability_window: int = 4
+    max_target_text_variants: int = 2
 
 
 @dataclass(slots=True)
@@ -150,6 +153,15 @@ def _load_combat(raw: dict) -> CombatSettings:
     return CombatSettings(
         attack_enabled=raw.get("attack_enabled", defaults.attack_enabled),
         attack_cooldown_seconds=raw.get("attack_cooldown_seconds", defaults.attack_cooldown_seconds),
+        target_confirmation_cycles=raw.get(
+            "target_confirmation_cycles", defaults.target_confirmation_cycles
+        ),
+        target_stability_window=raw.get(
+            "target_stability_window", defaults.target_stability_window
+        ),
+        max_target_text_variants=raw.get(
+            "max_target_text_variants", defaults.max_target_text_variants
+        ),
     )
 
 
