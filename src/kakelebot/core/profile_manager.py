@@ -18,6 +18,9 @@ class ProfilePreset:
     key: str
     label: str
     description: str
+    expected_width: int
+    expected_height: int
+    ui_scale: float
 
 
 class ProfileManager:
@@ -26,16 +29,25 @@ class ProfileManager:
             key="heal_safe",
             label="Heal Safe",
             description="Foco em sustain, sem ataque ofensivo ativo.",
+            expected_width=1366,
+            expected_height=768,
+            ui_scale=1.0,
         ),
         ProfilePreset(
             key="hunt_basic",
             label="Hunt Basic",
             description="Ataque primario estavel com haste ligada.",
+            expected_width=1366,
+            expected_height=768,
+            ui_scale=1.0,
         ),
         ProfilePreset(
             key="combo_aggressive",
             label="Combo Aggressive",
             description="Ataque primario e secundario com janela de combo.",
+            expected_width=1920,
+            expected_height=1080,
+            ui_scale=1.0,
         ),
     )
 
@@ -140,8 +152,25 @@ class ProfileManager:
             return
         raise ValueError("Unknown preset.")
 
-    @staticmethod
-    def _apply_heal_safe(profile: ProfileSettings) -> None:
+    @classmethod
+    def _preset_by_key(cls, preset_key: str) -> ProfilePreset:
+        normalized_key = preset_key.strip().lower()
+        for preset in cls.PRESETS:
+            if preset.key == normalized_key:
+                return preset
+        raise ValueError("Unknown preset.")
+
+    @classmethod
+    def _apply_resolution_context(cls, profile: ProfileSettings, preset_key: str) -> None:
+        preset = cls._preset_by_key(preset_key)
+        profile.resolution_width = preset.expected_width
+        profile.resolution_height = preset.expected_height
+        profile.ui_scale = preset.ui_scale
+
+    @classmethod
+    def _apply_heal_safe(cls, profile: ProfileSettings) -> None:
+        cls._apply_resolution_context(profile, "heal_safe")
+
         profile.buffs.haste_enabled = False
         profile.buffs.haste_interval_seconds = 30.0
         profile.buffs.haste_cooldown_seconds = 1.0
@@ -159,8 +188,10 @@ class ProfileManager:
         profile.healing_loop.continuous_mode = True
         profile.healing_loop.polling_interval_seconds = 0.35
 
-    @staticmethod
-    def _apply_hunt_basic(profile: ProfileSettings) -> None:
+    @classmethod
+    def _apply_hunt_basic(cls, profile: ProfileSettings) -> None:
+        cls._apply_resolution_context(profile, "hunt_basic")
+
         profile.buffs.haste_enabled = True
         profile.buffs.haste_interval_seconds = 20.0
         profile.buffs.haste_cooldown_seconds = 1.0
@@ -178,8 +209,10 @@ class ProfileManager:
         profile.healing_loop.continuous_mode = True
         profile.healing_loop.polling_interval_seconds = 0.25
 
-    @staticmethod
-    def _apply_combo_aggressive(profile: ProfileSettings) -> None:
+    @classmethod
+    def _apply_combo_aggressive(cls, profile: ProfileSettings) -> None:
+        cls._apply_resolution_context(profile, "combo_aggressive")
+
         profile.buffs.haste_enabled = True
         profile.buffs.haste_interval_seconds = 18.0
         profile.buffs.haste_cooldown_seconds = 1.0
