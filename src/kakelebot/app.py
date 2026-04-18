@@ -6,8 +6,9 @@ from kakelebot.core.calibration import CalibrationService
 from kakelebot.core.capture import CaptureService
 from kakelebot.core.input import InputService
 from kakelebot.core.runtime import RuntimeBootstrap
+from kakelebot.core.session import SessionController
 from kakelebot.core.vision import VisionService
-from kakelebot.core.window import WindowDiscoveryError, WindowService
+from kakelebot.core.window import WindowService
 from kakelebot.features.healing import HealingService
 from kakelebot.features.healing_loop import HealingLoopRunner
 from kakelebot.features.healing_runtime import HealingRuntime
@@ -36,48 +37,56 @@ def run() -> int:
     capture_service = CaptureService(adapter=PyAutoGuiCaptureAdapter())
     calibration_service = CalibrationService()
     healing_service = HealingService()
+    vision_service = VisionService(PyTesseractAdapter())
+    input_service = InputService(PyDirectInputAdapter())
 
-    try:
-        game_window = window_service.get_game_window()
-        whole_window = capture_service.whole_window_region(game_window)
-        frame = capture_service.capture(whole_window)
+    healing_runtime = HealingRuntime(
+        capture_service=capture_service,
+        vision_service=vision_service,
+        healing_service=healing_service,
+        input_service=input_service,
+    )
+    healing_loop = HealingLoopRunner(
+        window_service=window_service,
+        calibration_service=calibration_service,
+        healing_runtime=healing_runtime,
+    )
+    session_controller = SessionController(
+        window_service=window_service,
+        capture_service=capture_service,
+        calibration_service=calibration_service,
+        healing_loop=healing_loop,
+    )
 
-        calibration_service.update_profile_resolution(runtime.profile, game_window)
-        profile_path = runtime.paths.profiles / f"{runtime.profile.name}.json"
-        calibration_service.save_profile(profile_path, runtime.profile)
-        snapshot = calibration_service.build_snapshot(game_window, runtime.profile)
+    profile_path = runtime.paths.profiles / f"{runtime.profile.name}.json"
+    session_result = session_controller.start_healing_bootstrap_session(
+        profile=runtime.profile,
+        profile_path=profile_path,
+    )
 
-        logger.info(
-            "Game window found: title=%s left=%s top=%s width=%s height=%s active=%s",
-            game_window.title,
-            game_window.left,
-            game_window.top,
-            game_window.width,
-            game_window.height,
-            game_window.is_active,
-        )
-        logger.info(
-            "Initial capture completed: region=%s frame_width=%s frame_height=%s",
-            whole_window.name,
-            getattr(frame, "width", "unknown"),
-            getattr(frame, "height", "unknown"),
-        )
-        logger.info(
-            "Calibration snapshot: life=%s mana=%s target=%s minimap=%s",
-            snapshot.life_bar,
-            snapshot.mana_bar,
-            snapshot.target_status,
-            snapshot.minimap,
-        )
+    logger.info("Session status: %s", session_result.status)
+    logger.info("Session result: %s", session_result)
 
+    print(f"Session status: {session_result.status.state} - {session_result.status.message}")
+
+    if session_result.error_message:
+        print(f"Session error: {session_result.error_message}")
+        return 1
+
+    if session_result.window is not None:
         print(
-            f"Game window found: {game_window.title} "
-            f"({game_window.width}x{game_window.height})"
+            f"Game window found: {session_result.window.title} "
+            f"({session_result.window.width}x{session_result.window.height})"
         )
+
+    if session_result.whole_window_region is not None:
         print(
-            f"Initial capture completed: "
-            f"{getattr(frame, 'width', 'unknown')}x{getattr(frame, 'height', 'unknown')}"
+            "Whole window region: "
+            f"{session_result.whole_window_region.width}x{session_result.whole_window_region.height}"
         )
+
+    if session_result.calibration_snapshot is not None:
+        snapshot = session_result.calibration_snapshot
         print(
             "Calibration regions prepared: "
             f"life={snapshot.life_bar.width}x{snapshot.life_bar.height}, "
@@ -86,34 +95,15 @@ def run() -> int:
             f"minimap={snapshot.minimap.width}x{snapshot.minimap.height}"
         )
 
-        try:
-            vision_service = VisionService(PyTesseractAdapter())
-            input_service = InputService(PyDirectInputAdapter())
-            healing_runtime = HealingRuntime(
-                capture_service=capture_service,
-                vision_service=vision_service,
-                healing_service=healing_service,
-                input_service=input_service,
-            )
-            healing_loop = HealingLoopRunner(
-                window_service=window_service,
-                calibration_service=calibration_service,
-                healing_runtime=healing_runtime,
-            )
-
-            loop_result = healing_loop.run(runtime.profile)
-
-            logger.info("Healing loop cycles completed: %s", loop_result.cycles_completed)
-            logger.info("Healing loop last cycle: %s", loop_result.last_cycle)
-
-            print(f"Healing loop cycles completed: {loop_result.cycles_completed}")
-            print(f"Healing loop last cycle: {loop_result.last_cycle}")
-        except RuntimeError as error:
-            logger.warning("Healing bootstrap unavailable: %s", error)
-            print(f"Healing bootstrap unavailable: {error}")
-    except WindowDiscoveryError as error:
-        logger.warning("%s", error)
-        print(str(error))
+    if session_result.healing_loop_result is not None:
+        print(
+            f"Healing loop cycles completed: "
+            f"{session_result.healing_loop_result.cycles_completed}"
+        )
+        print(
+            f"Healing loop last cycle: "
+            f"{session_result.healing_loop_result.last_cycle}"
+        )
 
     return 0
 
