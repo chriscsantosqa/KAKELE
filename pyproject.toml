@@ -13,6 +13,7 @@ authors = [
 ]
 dependencies = [
   "pillow>=10.0.0",
+  "pynput>=1.7.7",
   "pyautogui>=0.9.54",
   "PyGetWindow>=0.0.9",
   "pydirectinput>=1.0.4",
