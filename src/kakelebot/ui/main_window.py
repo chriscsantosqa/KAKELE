@@ -33,8 +33,8 @@ class MainWindow:
 
         self.root = tk.Tk()
         self.root.title("KakeleBot Next")
-        self.root.geometry("1280x980")
-        self.root.minsize(1120, 820)
+        self.root.geometry("1280x1020")
+        self.root.minsize(1120, 860)
 
         self._status_var = tk.StringVar(value="idle")
         self._profile_var = tk.StringVar(value=f"profile: {profile.name}")
@@ -71,6 +71,10 @@ class MainWindow:
         self._pause_resume_hotkey_var = tk.StringVar(value=profile.hotkeys.pause_resume)
         self._heal_life_hotkey_var = tk.StringVar(value=profile.hotkeys.heal_life)
         self._heal_mana_hotkey_var = tk.StringVar(value=profile.hotkeys.heal_mana)
+        self._buff_haste_hotkey_var = tk.StringVar(value=profile.hotkeys.buff_haste)
+        self._haste_enabled_var = tk.BooleanVar(value=profile.buffs.haste_enabled)
+        self._haste_interval_var = tk.StringVar(value=str(profile.buffs.haste_interval_seconds))
+        self._haste_cooldown_var = tk.StringVar(value=str(profile.buffs.haste_cooldown_seconds))
 
         self._life_left_ratio_var = tk.StringVar(value=str(profile.rois.life_bar.left_ratio))
         self._life_top_ratio_var = tk.StringVar(value=str(profile.rois.life_bar.top_ratio))
@@ -86,6 +90,7 @@ class MainWindow:
         self._diag_mana_var = tk.StringVar(value="mana: -")
         self._diag_actions_var = tk.StringVar(value="actions executed: -")
         self._diag_suppressed_var = tk.StringVar(value="actions suppressed: -")
+        self._diag_haste_var = tk.StringVar(value="haste status: -")
         self._diag_terminated_var = tk.StringVar(value="terminated early: -")
         self._diag_termination_reason_var = tk.StringVar(value="termination reason: -")
         self._diag_fail_safe_var = tk.StringVar(value="fail-safe triggered: -")
@@ -190,6 +195,9 @@ class MainWindow:
             ("Pause/Resume hotkey", self._pause_resume_hotkey_var),
             ("Life hotkey", self._heal_life_hotkey_var),
             ("Mana hotkey", self._heal_mana_hotkey_var),
+            ("Haste hotkey", self._buff_haste_hotkey_var),
+            ("Haste interval (s)", self._haste_interval_var),
+            ("Haste cooldown (s)", self._haste_cooldown_var),
         ]
 
         for row_index, (label, variable) in enumerate(fields):
@@ -213,10 +221,21 @@ class MainWindow:
             sticky=tk.W,
             pady=(8, 0),
         )
+        ttk.Checkbutton(
+            editor,
+            text="Enable haste buff",
+            variable=self._haste_enabled_var,
+        ).grid(
+            row=len(fields) + 1,
+            column=0,
+            columnspan=2,
+            sticky=tk.W,
+            pady=(4, 0),
+        )
 
         editor.columnconfigure(1, weight=1)
         ttk.Button(editor, text="Save profile", command=self._on_save_profile).grid(
-            row=len(fields) + 1,
+            row=len(fields) + 2,
             column=0,
             columnspan=2,
             sticky=tk.EW,
@@ -279,6 +298,7 @@ class MainWindow:
             self._diag_mana_var,
             self._diag_actions_var,
             self._diag_suppressed_var,
+            self._diag_haste_var,
             self._diag_terminated_var,
             self._diag_termination_reason_var,
             self._diag_fail_safe_var,
@@ -381,6 +401,7 @@ class MainWindow:
             self._diag_mana_var.set("mana: -")
             self._diag_actions_var.set("actions executed: -")
             self._diag_suppressed_var.set("actions suppressed: -")
+            self._diag_haste_var.set("haste status: -")
             self._diag_terminated_var.set("terminated early: -")
             self._diag_termination_reason_var.set("termination reason: -")
             self._diag_fail_safe_var.set("fail-safe triggered: -")
@@ -395,6 +416,7 @@ class MainWindow:
         self._diag_suppressed_var.set(
             "actions suppressed: " + (", ".join(last_cycle.suppressed_actions) or "none")
         )
+        self._diag_haste_var.set(f"haste status: {last_cycle.haste_status}")
         self._diag_terminated_var.set(
             "terminated early: "
             + (str(loop_result.terminated_early) if loop_result is not None else "-")
@@ -538,6 +560,10 @@ class MainWindow:
         self._pause_resume_hotkey_var.set(profile.hotkeys.pause_resume)
         self._heal_life_hotkey_var.set(profile.hotkeys.heal_life)
         self._heal_mana_hotkey_var.set(profile.hotkeys.heal_mana)
+        self._buff_haste_hotkey_var.set(profile.hotkeys.buff_haste)
+        self._haste_enabled_var.set(profile.buffs.haste_enabled)
+        self._haste_interval_var.set(str(profile.buffs.haste_interval_seconds))
+        self._haste_cooldown_var.set(str(profile.buffs.haste_cooldown_seconds))
         self._life_left_ratio_var.set(str(profile.rois.life_bar.left_ratio))
         self._life_top_ratio_var.set(str(profile.rois.life_bar.top_ratio))
         self._life_width_ratio_var.set(str(profile.rois.life_bar.width_ratio))
@@ -655,13 +681,22 @@ class MainWindow:
         profile.hotkeys.pause_resume = self._pause_resume_hotkey_var.get().strip().upper()
         profile.hotkeys.heal_life = self._heal_life_hotkey_var.get().strip().upper()
         profile.hotkeys.heal_mana = self._heal_mana_hotkey_var.get().strip().upper()
+        profile.hotkeys.buff_haste = self._buff_haste_hotkey_var.get().strip().upper()
+        profile.buffs.haste_enabled = bool(self._haste_enabled_var.get())
+        profile.buffs.haste_interval_seconds = self._parse_float(
+            self._haste_interval_var.get(), minimum=0.1, field_name="Haste interval (s)"
+        )
+        profile.buffs.haste_cooldown_seconds = self._parse_float(
+            self._haste_cooldown_var.get(), minimum=0.1, field_name="Haste cooldown (s)"
+        )
         if (
             not profile.hotkeys.start_stop
             or not profile.hotkeys.pause_resume
             or not profile.hotkeys.heal_life
             or not profile.hotkeys.heal_mana
+            or not profile.hotkeys.buff_haste
         ):
-            raise ValueError("Global, life and mana hotkeys cannot be empty.")
+            raise ValueError("Global, heal and haste hotkeys cannot be empty.")
 
         profile.rois.life_bar.left_ratio = self._parse_ratio(
             self._life_left_ratio_var.get(), field_name="Life ROI left"
