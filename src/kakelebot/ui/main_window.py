@@ -26,8 +26,8 @@ class MainWindow:
 
         self.root = tk.Tk()
         self.root.title("KakeleBot Next")
-        self.root.geometry("1180x760")
-        self.root.minsize(1000, 680)
+        self.root.geometry("1240x820")
+        self.root.minsize(1080, 720)
 
         self._status_var = tk.StringVar(value="idle")
         self._profile_var = tk.StringVar(value=f"profile: {profile.name}")
@@ -50,6 +50,15 @@ class MainWindow:
         )
         self._heal_life_hotkey_var = tk.StringVar(value=profile.hotkeys.heal_life)
         self._heal_mana_hotkey_var = tk.StringVar(value=profile.hotkeys.heal_mana)
+
+        self._life_left_ratio_var = tk.StringVar(value=str(profile.rois.life_bar.left_ratio))
+        self._life_top_ratio_var = tk.StringVar(value=str(profile.rois.life_bar.top_ratio))
+        self._life_width_ratio_var = tk.StringVar(value=str(profile.rois.life_bar.width_ratio))
+        self._life_height_ratio_var = tk.StringVar(value=str(profile.rois.life_bar.height_ratio))
+        self._mana_left_ratio_var = tk.StringVar(value=str(profile.rois.mana_bar.left_ratio))
+        self._mana_top_ratio_var = tk.StringVar(value=str(profile.rois.mana_bar.top_ratio))
+        self._mana_width_ratio_var = tk.StringVar(value=str(profile.rois.mana_bar.width_ratio))
+        self._mana_height_ratio_var = tk.StringVar(value=str(profile.rois.mana_bar.height_ratio))
 
         self._diag_decision_var = tk.StringVar(value="decision: -")
         self._diag_life_var = tk.StringVar(value="life: -")
@@ -76,7 +85,7 @@ class MainWindow:
         ttk.Label(header, textvariable=self._profile_var).pack(anchor=tk.W)
         ttk.Label(header, textvariable=self._status_var).pack(anchor=tk.W)
         ttk.Label(header, textvariable=self._cycles_var).pack(anchor=tk.W)
-        ttk.Label(header, textvariable=self._message_var, wraplength=1120).pack(anchor=tk.W, pady=(6, 0))
+        ttk.Label(header, textvariable=self._message_var, wraplength=1180).pack(anchor=tk.W, pady=(6, 0))
 
         body = ttk.Frame(container)
         body.pack(fill=tk.BOTH, expand=True)
@@ -86,6 +95,7 @@ class MainWindow:
 
         self._build_actions(left_panel)
         self._build_config_editor(left_panel)
+        self._build_roi_editor(left_panel)
 
         right_panel = ttk.Frame(body)
         right_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -106,7 +116,7 @@ class MainWindow:
 
     def _build_config_editor(self, parent: ttk.Frame) -> None:
         editor = ttk.LabelFrame(parent, text="Profile configuration", padding=12)
-        editor.pack(fill=tk.BOTH, expand=False)
+        editor.pack(fill=tk.BOTH, expand=False, pady=(0, 12))
 
         fields = [
             ("Life %", self._life_percent_var),
@@ -132,6 +142,52 @@ class MainWindow:
         editor.columnconfigure(1, weight=1)
         ttk.Button(editor, text="Save profile", command=self._on_save_profile).grid(
             row=len(fields),
+            column=0,
+            columnspan=2,
+            sticky=tk.EW,
+            pady=(12, 0),
+        )
+
+    def _build_roi_editor(self, parent: ttk.Frame) -> None:
+        roi_editor = ttk.LabelFrame(parent, text="Assisted ROI calibration", padding=12)
+        roi_editor.pack(fill=tk.BOTH, expand=False)
+
+        ttk.Label(roi_editor, text="Life ROI ratios").grid(row=0, column=0, columnspan=2, sticky=tk.W)
+        life_fields = [
+            ("Left", self._life_left_ratio_var),
+            ("Top", self._life_top_ratio_var),
+            ("Width", self._life_width_ratio_var),
+            ("Height", self._life_height_ratio_var),
+        ]
+        for index, (label, variable) in enumerate(life_fields, start=1):
+            ttk.Label(roi_editor, text=label).grid(row=index, column=0, sticky=tk.W, pady=3)
+            ttk.Entry(roi_editor, textvariable=variable, width=18).grid(
+                row=index, column=1, sticky=tk.EW, pady=3, padx=(10, 0)
+            )
+
+        base_row = len(life_fields) + 1
+        ttk.Label(roi_editor, text="Mana ROI ratios").grid(
+            row=base_row, column=0, columnspan=2, sticky=tk.W, pady=(10, 0)
+        )
+        mana_fields = [
+            ("Left", self._mana_left_ratio_var),
+            ("Top", self._mana_top_ratio_var),
+            ("Width", self._mana_width_ratio_var),
+            ("Height", self._mana_height_ratio_var),
+        ]
+        for offset, (label, variable) in enumerate(mana_fields, start=1):
+            ttk.Label(roi_editor, text=label).grid(row=base_row + offset, column=0, sticky=tk.W, pady=3)
+            ttk.Entry(roi_editor, textvariable=variable, width=18).grid(
+                row=base_row + offset, column=1, sticky=tk.EW, pady=3, padx=(10, 0)
+            )
+
+        roi_editor.columnconfigure(1, weight=1)
+        ttk.Button(
+            roi_editor,
+            text="Save ROI calibration",
+            command=self._on_save_roi_calibration,
+        ).grid(
+            row=base_row + len(mana_fields) + 1,
             column=0,
             columnspan=2,
             sticky=tk.EW,
@@ -360,6 +416,51 @@ class MainWindow:
         except ValueError as error:
             self._append_output(f"Profile save failed: {error}\n")
 
+    def _on_save_roi_calibration(self) -> None:
+        try:
+            self._profile.rois.life_bar.left_ratio = self._parse_ratio(
+                self._life_left_ratio_var.get(),
+                field_name="Life ROI left",
+            )
+            self._profile.rois.life_bar.top_ratio = self._parse_ratio(
+                self._life_top_ratio_var.get(),
+                field_name="Life ROI top",
+            )
+            self._profile.rois.life_bar.width_ratio = self._parse_ratio(
+                self._life_width_ratio_var.get(),
+                field_name="Life ROI width",
+                allow_zero=False,
+            )
+            self._profile.rois.life_bar.height_ratio = self._parse_ratio(
+                self._life_height_ratio_var.get(),
+                field_name="Life ROI height",
+                allow_zero=False,
+            )
+            self._profile.rois.mana_bar.left_ratio = self._parse_ratio(
+                self._mana_left_ratio_var.get(),
+                field_name="Mana ROI left",
+            )
+            self._profile.rois.mana_bar.top_ratio = self._parse_ratio(
+                self._mana_top_ratio_var.get(),
+                field_name="Mana ROI top",
+            )
+            self._profile.rois.mana_bar.width_ratio = self._parse_ratio(
+                self._mana_width_ratio_var.get(),
+                field_name="Mana ROI width",
+                allow_zero=False,
+            )
+            self._profile.rois.mana_bar.height_ratio = self._parse_ratio(
+                self._mana_height_ratio_var.get(),
+                field_name="Mana ROI height",
+                allow_zero=False,
+            )
+
+            save_profile(self._profile_path, self._profile)
+            self._append_output(f"ROI calibration saved to {self._profile_path}.\n")
+            self._on_refresh_preview()
+        except ValueError as error:
+            self._append_output(f"ROI calibration save failed: {error}\n")
+
     def _append_output(self, text: str) -> None:
         self._output.configure(state=tk.NORMAL)
         self._output.insert(tk.END, text)
@@ -415,6 +516,15 @@ class MainWindow:
         value = float(raw.strip())
         if value < minimum:
             raise ValueError(f"{field_name} must be >= {minimum}.")
+        return value
+
+    @staticmethod
+    def _parse_ratio(raw: str, field_name: str, allow_zero: bool = True) -> float:
+        value = float(raw.strip())
+        minimum = 0.0 if allow_zero else 0.0001
+        if value < minimum or value > 1.0:
+            comparator = "between 0.0 and 1.0" if allow_zero else "between >0.0 and 1.0"
+            raise ValueError(f"{field_name} must be {comparator}.")
         return value
 
     @staticmethod
