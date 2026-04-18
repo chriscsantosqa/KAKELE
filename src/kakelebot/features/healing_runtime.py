@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
-from kakelebot.core.capture import CaptureService
 from kakelebot.core.calibration import CalibrationSnapshot
+from kakelebot.core.capture import CaptureService
 from kakelebot.core.input import InputService, KeyAction
-from kakelebot.core.vision import VisionService, BarReading
+from kakelebot.core.vision import BarReading, VisionService
 from kakelebot.features.healing import HealingDecision, HealingService
 
 
@@ -15,6 +16,7 @@ class HealingCycleResult:
     mana_reading: BarReading | None
     decision: HealingDecision
     actions_executed: tuple[KeyAction, ...]
+    suppressed_actions: tuple[str, ...]
 
 
 class HealingRuntime:
@@ -29,6 +31,9 @@ class HealingRuntime:
         self._vision = vision_service
         self._healing = healing_service
         self._input = input_service
+        self._time_provider = time.monotonic
+        self._last_life_action_at: float | None = None
+        self._last_mana_action_at: float | None = None
 
     def execute_cycle(
         self,
@@ -37,6 +42,8 @@ class HealingRuntime:
         mana_hotkey: str,
         life_threshold_percent: int,
         mana_threshold_percent: int,
+        life_cooldown_seconds: float,
+        mana_cooldown_seconds: float,
         window_is_active: bool,
     ) -> HealingCycleResult:
         life_image = self._capture.capture(snapshot.life_bar)
@@ -53,20 +60,43 @@ class HealingRuntime:
         )
 
         executed_actions: list[KeyAction] = []
-        if window_is_active:
+        suppressed_actions: list[str] = []
+
+        if not window_is_active:
+            suppressed_actions.append("window-inactive")
+        else:
             if decision.should_heal_life:
-                action = KeyAction(key=life_hotkey, reason=decision.reason)
-                self._input.execute(action)
-                executed_actions.append(action)
+                if self._can_execute_life(life_cooldown_seconds):
+                    action = KeyAction(key=life_hotkey, reason=decision.reason)
+                    self._input.execute(action)
+                    executed_actions.append(action)
+                    self._last_life_action_at = self._time_provider()
+                else:
+                    suppressed_actions.append("life-cooldown")
 
             if decision.should_heal_mana:
-                action = KeyAction(key=mana_hotkey, reason=decision.reason)
-                self._input.execute(action)
-                executed_actions.append(action)
+                if self._can_execute_mana(mana_cooldown_seconds):
+                    action = KeyAction(key=mana_hotkey, reason=decision.reason)
+                    self._input.execute(action)
+                    executed_actions.append(action)
+                    self._last_mana_action_at = self._time_provider()
+                else:
+                    suppressed_actions.append("mana-cooldown")
 
         return HealingCycleResult(
             life_reading=life_reading,
             mana_reading=mana_reading,
             decision=decision,
             actions_executed=tuple(executed_actions),
+            suppressed_actions=tuple(suppressed_actions),
         )
+
+    def _can_execute_life(self, cooldown_seconds: float) -> bool:
+        if self._last_life_action_at is None:
+            return True
+        return (self._time_provider() - self._last_life_action_at) >= cooldown_seconds
+
+    def _can_execute_mana(self, cooldown_seconds: float) -> bool:
+        if self._last_mana_action_at is None:
+            return True
+        return (self._time_provider() - self._last_mana_action_at) >= cooldown_seconds
