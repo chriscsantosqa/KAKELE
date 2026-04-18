@@ -9,6 +9,7 @@ from kakelebot.core.runtime import RuntimeBootstrap
 from kakelebot.core.vision import VisionService
 from kakelebot.core.window import WindowDiscoveryError, WindowService
 from kakelebot.features.healing import HealingService
+from kakelebot.features.healing_loop import HealingLoopRunner
 from kakelebot.features.healing_runtime import HealingRuntime
 from kakelebot.infra.pyautogui_capture_adapter import PyAutoGuiCaptureAdapter
 from kakelebot.infra.pydirectinput_adapter import PyDirectInputAdapter
@@ -94,25 +95,19 @@ def run() -> int:
                 healing_service=healing_service,
                 input_service=input_service,
             )
-
-            cycle_result = healing_runtime.execute_cycle(
-                snapshot=snapshot,
-                life_hotkey=runtime.profile.hotkeys.heal_life,
-                mana_hotkey=runtime.profile.hotkeys.heal_mana,
-                life_threshold_percent=runtime.profile.thresholds.life_percent,
-                mana_threshold_percent=runtime.profile.thresholds.mana_percent,
-                window_is_active=game_window.is_active,
+            healing_loop = HealingLoopRunner(
+                window_service=window_service,
+                calibration_service=calibration_service,
+                healing_runtime=healing_runtime,
             )
 
-            logger.info("Life OCR reading: %s", cycle_result.life_reading)
-            logger.info("Mana OCR reading: %s", cycle_result.mana_reading)
-            logger.info("Healing decision: %s", cycle_result.decision)
-            logger.info("Healing actions executed: %s", cycle_result.actions_executed)
+            loop_result = healing_loop.run(runtime.profile)
 
-            print(f"Life OCR reading: {cycle_result.life_reading}")
-            print(f"Mana OCR reading: {cycle_result.mana_reading}")
-            print(f"Healing decision: {cycle_result.decision.reason}")
-            print(f"Healing actions executed: {cycle_result.actions_executed}")
+            logger.info("Healing loop cycles completed: %s", loop_result.cycles_completed)
+            logger.info("Healing loop last cycle: %s", loop_result.last_cycle)
+
+            print(f"Healing loop cycles completed: {loop_result.cycles_completed}")
+            print(f"Healing loop last cycle: {loop_result.last_cycle}")
         except RuntimeError as error:
             logger.warning("Healing bootstrap unavailable: %s", error)
             print(f"Healing bootstrap unavailable: {error}")
