@@ -35,8 +35,8 @@ class MainWindow:
 
         self.root = tk.Tk()
         self.root.title("KakeleBot Next")
-        self.root.geometry("1280x1180")
-        self.root.minsize(1120, 980)
+        self.root.geometry("1280x1220")
+        self.root.minsize(1120, 1000)
 
         self._status_var = tk.StringVar(value="idle")
         self._profile_var = tk.StringVar(value=f"profile: {profile.name}")
@@ -113,6 +113,10 @@ class MainWindow:
         self._mana_top_ratio_var = tk.StringVar(value=str(profile.rois.mana_bar.top_ratio))
         self._mana_width_ratio_var = tk.StringVar(value=str(profile.rois.mana_bar.width_ratio))
         self._mana_height_ratio_var = tk.StringVar(value=str(profile.rois.mana_bar.height_ratio))
+        self._target_left_ratio_var = tk.StringVar(value=str(profile.rois.target_status.left_ratio))
+        self._target_top_ratio_var = tk.StringVar(value=str(profile.rois.target_status.top_ratio))
+        self._target_width_ratio_var = tk.StringVar(value=str(profile.rois.target_status.width_ratio))
+        self._target_height_ratio_var = tk.StringVar(value=str(profile.rois.target_status.height_ratio))
 
         self._diag_decision_var = tk.StringVar(value="decision: -")
         self._diag_life_var = tk.StringVar(value="life: -")
@@ -241,7 +245,8 @@ class MainWindow:
         ttk.Button(actions, text="Pause", command=self._on_pause).pack(fill=tk.X, pady=(0, 6))
         ttk.Button(actions, text="Resume", command=self._on_resume).pack(fill=tk.X, pady=(0, 6))
         ttk.Button(actions, text="Stop", command=self._on_stop).pack(fill=tk.X, pady=(0, 6))
-        ttk.Button(actions, text="Refresh ROI/OCR preview", command=self._on_refresh_preview).pack(fill=tk.X)
+        ttk.Button(actions, text="Refresh ROI/OCR preview", command=self._on_refresh_preview).pack(fill=tk.X, pady=(0, 6))
+        ttk.Button(actions, text="Adopt current window as baseline", command=self._on_adopt_current_window_baseline).pack(fill=tk.X)
 
     def _build_config_editor(self, parent: ttk.Frame) -> None:
         editor = ttk.LabelFrame(parent, text="Profile configuration", padding=12)
@@ -367,9 +372,9 @@ class MainWindow:
                 row=index, column=1, sticky=tk.EW, pady=3, padx=(10, 0)
             )
 
-        base_row = len(life_fields) + 1
+        mana_base_row = len(life_fields) + 1
         ttk.Label(roi_editor, text="Mana ROI ratios").grid(
-            row=base_row, column=0, columnspan=2, sticky=tk.W, pady=(10, 0)
+            row=mana_base_row, column=0, columnspan=2, sticky=tk.W, pady=(10, 0)
         )
         mana_fields = [
             ("Left", self._mana_left_ratio_var),
@@ -378,9 +383,25 @@ class MainWindow:
             ("Height", self._mana_height_ratio_var),
         ]
         for offset, (label, variable) in enumerate(mana_fields, start=1):
-            ttk.Label(roi_editor, text=label).grid(row=base_row + offset, column=0, sticky=tk.W, pady=3)
+            ttk.Label(roi_editor, text=label).grid(row=mana_base_row + offset, column=0, sticky=tk.W, pady=3)
             ttk.Entry(roi_editor, textvariable=variable, width=18).grid(
-                row=base_row + offset, column=1, sticky=tk.EW, pady=3, padx=(10, 0)
+                row=mana_base_row + offset, column=1, sticky=tk.EW, pady=3, padx=(10, 0)
+            )
+
+        target_base_row = mana_base_row + len(mana_fields) + 1
+        ttk.Label(roi_editor, text="Target ROI ratios").grid(
+            row=target_base_row, column=0, columnspan=2, sticky=tk.W, pady=(10, 0)
+        )
+        target_fields = [
+            ("Left", self._target_left_ratio_var),
+            ("Top", self._target_top_ratio_var),
+            ("Width", self._target_width_ratio_var),
+            ("Height", self._target_height_ratio_var),
+        ]
+        for offset, (label, variable) in enumerate(target_fields, start=1):
+            ttk.Label(roi_editor, text=label).grid(row=target_base_row + offset, column=0, sticky=tk.W, pady=3)
+            ttk.Entry(roi_editor, textvariable=variable, width=18).grid(
+                row=target_base_row + offset, column=1, sticky=tk.EW, pady=3, padx=(10, 0)
             )
 
         roi_editor.columnconfigure(1, weight=1)
@@ -389,7 +410,7 @@ class MainWindow:
             text="Save ROI calibration",
             command=self._on_save_roi_calibration,
         ).grid(
-            row=base_row + len(mana_fields) + 1,
+            row=target_base_row + len(target_fields) + 1,
             column=0,
             columnspan=2,
             sticky=tk.EW,
@@ -650,6 +671,25 @@ class MainWindow:
         else:
             self._append_output("ROI / OCR preview refreshed.\n")
 
+    def _on_adopt_current_window_baseline(self) -> None:
+        try:
+            self._sync_form_into_profile(self._profile)
+            preview = self._session_controller.capture_preview(self._profile)
+            if preview.error_message or preview.window is None:
+                self._apply_preview(preview)
+                self._append_output(f"Adopt baseline failed: {preview.error_message}\n")
+                return
+
+            self._profile.resolution_width = preview.window.width
+            self._profile.resolution_height = preview.window.height
+            save_profile(self._profile_path, self._profile)
+            self._apply_preview(self._session_controller.capture_preview(self._profile))
+            self._append_output(
+                f"Current window adopted as baseline: {self._profile.resolution_width}x{self._profile.resolution_height}.\n"
+            )
+        except ValueError as error:
+            self._append_output(f"Adopt baseline failed: {error}\n")
+
     def _on_load_selected_profile(self) -> None:
         if self._profile_manager is None:
             return
@@ -783,6 +823,10 @@ class MainWindow:
         self._mana_top_ratio_var.set(str(profile.rois.mana_bar.top_ratio))
         self._mana_width_ratio_var.set(str(profile.rois.mana_bar.width_ratio))
         self._mana_height_ratio_var.set(str(profile.rois.mana_bar.height_ratio))
+        self._target_left_ratio_var.set(str(profile.rois.target_status.left_ratio))
+        self._target_top_ratio_var.set(str(profile.rois.target_status.top_ratio))
+        self._target_width_ratio_var.set(str(profile.rois.target_status.width_ratio))
+        self._target_height_ratio_var.set(str(profile.rois.target_status.height_ratio))
         self._configure_global_hotkeys()
 
     def _apply_preview(self, preview: SessionPreviewResult) -> None:
@@ -819,7 +863,7 @@ class MainWindow:
         if resolution_validation is None:
             roi_guidance = "unavailable"
         elif not resolution_validation.profile_resolution_set:
-            roi_guidance = "profile has no baseline yet; save the profile to adopt the current window"
+            roi_guidance = "profile has no baseline yet; adopt the current window before calibrating ROI"
         elif resolution_validation.matches_profile:
             roi_guidance = "safe to calibrate ROI on this window"
         else:
@@ -1005,10 +1049,41 @@ class MainWindow:
         profile.rois.mana_bar.height_ratio = self._parse_ratio(
             self._mana_height_ratio_var.get(), field_name="Mana ROI height", allow_zero=False
         )
+        profile.rois.target_status.left_ratio = self._parse_ratio(
+            self._target_left_ratio_var.get(), field_name="Target ROI left"
+        )
+        profile.rois.target_status.top_ratio = self._parse_ratio(
+            self._target_top_ratio_var.get(), field_name="Target ROI top"
+        )
+        profile.rois.target_status.width_ratio = self._parse_ratio(
+            self._target_width_ratio_var.get(), field_name="Target ROI width", allow_zero=False
+        )
+        profile.rois.target_status.height_ratio = self._parse_ratio(
+            self._target_height_ratio_var.get(), field_name="Target ROI height", allow_zero=False
+        )
 
     def _on_save_roi_calibration(self) -> None:
         try:
             self._sync_form_into_profile(self._profile)
+            preview = self._session_controller.capture_preview(self._profile)
+            self._apply_preview(preview)
+            if preview.error_message:
+                self._append_output(f"ROI calibration save failed: {preview.error_message}\n")
+                return
+            resolution_validation = preview.resolution_validation
+            if resolution_validation is None:
+                self._append_output("ROI calibration save failed: resolution validation unavailable.\n")
+                return
+            if not resolution_validation.profile_resolution_set:
+                self._append_output(
+                    "ROI calibration blocked: adopt the current window as baseline before saving ROI.\n"
+                )
+                return
+            if not resolution_validation.matches_profile:
+                self._append_output(
+                    f"ROI calibration blocked: {resolution_validation.message}.\n"
+                )
+                return
             save_profile(self._profile_path, self._profile)
             self._append_output(f"ROI calibration saved to {self._profile_path}.\n")
             self._on_refresh_preview()
