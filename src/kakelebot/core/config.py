@@ -37,6 +37,7 @@ class HealingLoopSettings:
     life_cooldown_seconds: float = 1.0
     mana_cooldown_seconds: float = 1.0
     bootstrap_cycle_limit: int = 3
+    continuous_mode: bool = False
 
 
 @dataclass(slots=True)
@@ -131,6 +132,9 @@ def _load_healing_loop(raw: dict) -> HealingLoopSettings:
         ),
         bootstrap_cycle_limit=raw.get(
             "bootstrap_cycle_limit", defaults.bootstrap_cycle_limit
+        ),
+        continuous_mode=raw.get(
+            "continuous_mode", defaults.continuous_mode
         ),
     )
 
