@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections import deque
 from dataclasses import dataclass
 
 from kakelebot.core.calibration import CalibrationSnapshot
@@ -20,6 +21,8 @@ class HealingCycleResult:
     haste_status: str
     attack_status: str
     has_target: bool
+    target_confirmed: bool
+    target_oscillating: bool
     target_reason: str
     target_text: str
 
@@ -41,6 +44,7 @@ class HealingRuntime:
         self._last_mana_action_at: float | None = None
         self._last_haste_action_at: float | None = None
         self._last_attack_action_at: float | None = None
+        self._recent_target_observations: deque[tuple[bool, str]] = deque(maxlen=12)
 
     def execute_cycle(
         self,
@@ -54,6 +58,9 @@ class HealingRuntime:
         haste_cooldown_seconds: float,
         attack_enabled: bool,
         attack_cooldown_seconds: float,
+        target_confirmation_cycles: int,
+        target_stability_window: int,
+        max_target_text_variants: int,
         life_threshold_percent: int,
         mana_threshold_percent: int,
         life_cooldown_seconds: float,
@@ -67,6 +74,12 @@ class HealingRuntime:
         life_reading = self._vision.read_bar_value(life_image)
         mana_reading = self._vision.read_bar_value(mana_image)
         target_preview = self._vision.build_target_preview(target_image)
+        self._record_target_observation(target_preview.has_target, target_preview.normalized_text)
+        target_confirmed = self._target_confirmed(target_confirmation_cycles)
+        target_oscillating = self._target_oscillating(
+            target_stability_window=target_stability_window,
+            max_target_text_variants=max_target_text_variants,
+        )
 
         decision = self._healing.evaluate(
             life=life_reading,
@@ -110,6 +123,8 @@ class HealingRuntime:
                 attack_enabled=attack_enabled,
                 attack_cooldown_seconds=attack_cooldown_seconds,
                 has_target=target_preview.has_target,
+                target_confirmed=target_confirmed,
+                target_oscillating=target_oscillating,
                 executed_actions=executed_actions,
                 suppressed_actions=suppressed_actions,
             )
@@ -131,9 +146,40 @@ class HealingRuntime:
             haste_status=haste_status,
             attack_status=attack_status,
             has_target=target_preview.has_target,
+            target_confirmed=target_confirmed,
+            target_oscillating=target_oscillating,
             target_reason=target_preview.reason,
             target_text=target_preview.normalized_text,
         )
+
+    def _record_target_observation(self, has_target: bool, normalized_text: str) -> None:
+        signal = normalized_text.strip().lower() or "<empty>"
+        self._recent_target_observations.append((has_target, signal))
+
+    def _target_confirmed(self, required_cycles: int) -> bool:
+        if required_cycles <= 1:
+            return bool(self._recent_target_observations and self._recent_target_observations[-1][0])
+        if len(self._recent_target_observations) < required_cycles:
+            return False
+        recent = list(self._recent_target_observations)[-required_cycles:]
+        return all(has_target for has_target, _ in recent)
+
+    def _target_oscillating(self, target_stability_window: int, max_target_text_variants: int) -> bool:
+        if target_stability_window <= 1 or len(self._recent_target_observations) < 2:
+            return False
+
+        window = list(self._recent_target_observations)[-target_stability_window:]
+        state_flips = sum(
+            1
+            for index in range(1, len(window))
+            if window[index][0] != window[index - 1][0]
+        )
+        text_variants = {
+            text
+            for has_target, text in window
+            if has_target and text != "<empty>"
+        }
+        return state_flips >= 2 or len(text_variants) > max_target_text_variants
 
     def _try_execute_attack(
         self,
@@ -141,6 +187,8 @@ class HealingRuntime:
         attack_enabled: bool,
         attack_cooldown_seconds: float,
         has_target: bool,
+        target_confirmed: bool,
+        target_oscillating: bool,
         executed_actions: list[KeyAction],
         suppressed_actions: list[str],
     ) -> str:
@@ -149,11 +197,17 @@ class HealingRuntime:
         if not has_target:
             suppressed_actions.append("attack-no-target")
             return "no-target"
+        if not target_confirmed:
+            suppressed_actions.append("attack-awaiting-confirmation")
+            return "awaiting-confirmation"
+        if target_oscillating:
+            suppressed_actions.append("attack-target-oscillating")
+            return "target-oscillating"
         if not self._can_execute_attack(attack_cooldown_seconds):
             suppressed_actions.append("attack-cooldown")
             return "cooldown"
 
-        action = KeyAction(key=attack_hotkey, reason="target-detected")
+        action = KeyAction(key=attack_hotkey, reason="target-confirmed")
         self._input.execute(action)
         executed_actions.append(action)
         self._last_attack_action_at = self._time_provider()
