@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from kakelebot.core.calibration import CalibrationService
 from kakelebot.core.capture import CaptureService
 from kakelebot.core.runtime import RuntimeBootstrap
 from kakelebot.core.window import WindowDiscoveryError, WindowService
@@ -26,11 +27,17 @@ def run() -> int:
 
     window_service = WindowService(adapter=PyGetWindowAdapter())
     capture_service = CaptureService(adapter=PyAutoGuiCaptureAdapter())
+    calibration_service = CalibrationService()
 
     try:
         game_window = window_service.get_game_window()
         whole_window = capture_service.whole_window_region(game_window)
         frame = capture_service.capture(whole_window)
+
+        calibration_service.update_profile_resolution(runtime.profile, game_window)
+        profile_path = runtime.paths.profiles / f"{runtime.profile.name}.json"
+        calibration_service.save_profile(profile_path, runtime.profile)
+        snapshot = calibration_service.build_snapshot(game_window, runtime.profile)
 
         logger.info(
             "Game window found: title=%s left=%s top=%s width=%s height=%s active=%s",
@@ -47,6 +54,13 @@ def run() -> int:
             getattr(frame, "width", "unknown"),
             getattr(frame, "height", "unknown"),
         )
+        logger.info(
+            "Calibration snapshot: life=%s mana=%s target=%s minimap=%s",
+            snapshot.life_bar,
+            snapshot.mana_bar,
+            snapshot.target_status,
+            snapshot.minimap,
+        )
 
         print(
             f"Game window found: {game_window.title} "
@@ -55,6 +69,13 @@ def run() -> int:
         print(
             f"Initial capture completed: "
             f"{getattr(frame, 'width', 'unknown')}x{getattr(frame, 'height', 'unknown')}"
+        )
+        print(
+            "Calibration regions prepared: "
+            f"life={snapshot.life_bar.width}x{snapshot.life_bar.height}, "
+            f"mana={snapshot.mana_bar.width}x{snapshot.mana_bar.height}, "
+            f"target={snapshot.target_status.width}x{snapshot.target_status.height}, "
+            f"minimap={snapshot.minimap.width}x{snapshot.minimap.height}"
         )
     except WindowDiscoveryError as error:
         logger.warning("%s", error)
