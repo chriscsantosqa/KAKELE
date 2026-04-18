@@ -57,6 +57,7 @@ class MainWindow:
         self._cycle_limit_var = tk.StringVar(
             value=str(profile.healing_loop.bootstrap_cycle_limit)
         )
+        self._continuous_mode_var = tk.BooleanVar(value=profile.healing_loop.continuous_mode)
         self._start_stop_hotkey_var = tk.StringVar(value=profile.hotkeys.start_stop)
         self._pause_resume_hotkey_var = tk.StringVar(value=profile.hotkeys.pause_resume)
         self._heal_life_hotkey_var = tk.StringVar(value=profile.hotkeys.heal_life)
@@ -187,9 +188,21 @@ class MainWindow:
                 padx=(10, 0),
             )
 
+        ttk.Checkbutton(
+            editor,
+            text="Continuous mode until stop",
+            variable=self._continuous_mode_var,
+        ).grid(
+            row=len(fields),
+            column=0,
+            columnspan=2,
+            sticky=tk.W,
+            pady=(8, 0),
+        )
+
         editor.columnconfigure(1, weight=1)
         ttk.Button(editor, text="Save profile", command=self._on_save_profile).grid(
-            row=len(fields),
+            row=len(fields) + 1,
             column=0,
             columnspan=2,
             sticky=tk.EW,
@@ -494,6 +507,7 @@ class MainWindow:
         self._life_cooldown_var.set(str(profile.healing_loop.life_cooldown_seconds))
         self._mana_cooldown_var.set(str(profile.healing_loop.mana_cooldown_seconds))
         self._cycle_limit_var.set(str(profile.healing_loop.bootstrap_cycle_limit))
+        self._continuous_mode_var.set(profile.healing_loop.continuous_mode)
         self._start_stop_hotkey_var.set(profile.hotkeys.start_stop)
         self._pause_resume_hotkey_var.set(profile.hotkeys.pause_resume)
         self._heal_life_hotkey_var.set(profile.hotkeys.heal_life)
@@ -601,6 +615,7 @@ class MainWindow:
         profile.healing_loop.bootstrap_cycle_limit = self._parse_int(
             self._cycle_limit_var.get(), minimum=1, maximum=9999, field_name="Cycle limit"
         )
+        profile.healing_loop.continuous_mode = bool(self._continuous_mode_var.get())
         profile.hotkeys.start_stop = self._start_stop_hotkey_var.get().strip().upper()
         profile.hotkeys.pause_resume = self._pause_resume_hotkey_var.get().strip().upper()
         profile.hotkeys.heal_life = self._heal_life_hotkey_var.get().strip().upper()
