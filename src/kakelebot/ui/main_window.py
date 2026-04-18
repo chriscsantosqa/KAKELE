@@ -35,8 +35,8 @@ class MainWindow:
 
         self.root = tk.Tk()
         self.root.title("KakeleBot Next")
-        self.root.geometry("1280x1160")
-        self.root.minsize(1120, 960)
+        self.root.geometry("1280x1180")
+        self.root.minsize(1120, 980)
 
         self._status_var = tk.StringVar(value="idle")
         self._profile_var = tk.StringVar(value=f"profile: {profile.name}")
@@ -50,6 +50,7 @@ class MainWindow:
 
         self._life_percent_var = tk.StringVar(value=str(profile.thresholds.life_percent))
         self._mana_percent_var = tk.StringVar(value=str(profile.thresholds.mana_percent))
+        self._ui_scale_var = tk.StringVar(value=str(profile.ui_scale))
         self._polling_interval_var = tk.StringVar(
             value=str(profile.healing_loop.polling_interval_seconds)
         )
@@ -125,11 +126,15 @@ class MainWindow:
         self._diag_target_confirmed_var = tk.StringVar(value="target confirmed: -")
         self._diag_target_oscillating_var = tk.StringVar(value="target oscillating: -")
         self._diag_target_reason_var = tk.StringVar(value="target reason: -")
+        self._diag_resolution_var = tk.StringVar(value="resolution validation: -")
         self._diag_terminated_var = tk.StringVar(value="terminated early: -")
         self._diag_termination_reason_var = tk.StringVar(value="termination reason: -")
         self._diag_fail_safe_var = tk.StringVar(value="fail-safe triggered: -")
 
         self._preview_window_var = tk.StringVar(value="window: -")
+        self._preview_profile_resolution_var = tk.StringVar(value="profile resolution: -")
+        self._preview_resolution_validation_var = tk.StringVar(value="window validation: -")
+        self._preview_roi_guidance_var = tk.StringVar(value="roi guidance: -")
         self._preview_life_roi_var = tk.StringVar(value="life roi: -")
         self._preview_mana_roi_var = tk.StringVar(value="mana roi: -")
         self._preview_target_roi_var = tk.StringVar(value="target roi: -")
@@ -245,6 +250,7 @@ class MainWindow:
         fields = [
             ("Life %", self._life_percent_var),
             ("Mana %", self._mana_percent_var),
+            ("UI scale", self._ui_scale_var),
             ("Polling (s)", self._polling_interval_var),
             ("Life cooldown (s)", self._life_cooldown_var),
             ("Mana cooldown (s)", self._mana_cooldown_var),
@@ -407,6 +413,7 @@ class MainWindow:
             self._diag_target_confirmed_var,
             self._diag_target_oscillating_var,
             self._diag_target_reason_var,
+            self._diag_resolution_var,
             self._diag_terminated_var,
             self._diag_termination_reason_var,
             self._diag_fail_safe_var,
@@ -422,6 +429,9 @@ class MainWindow:
         preview.pack(fill=tk.X, pady=(0, 12))
 
         ttk.Label(preview, textvariable=self._preview_window_var, wraplength=860).pack(anchor=tk.W)
+        ttk.Label(preview, textvariable=self._preview_profile_resolution_var, wraplength=860).pack(anchor=tk.W, pady=(2, 0))
+        ttk.Label(preview, textvariable=self._preview_resolution_validation_var, wraplength=860).pack(anchor=tk.W, pady=(2, 0))
+        ttk.Label(preview, textvariable=self._preview_roi_guidance_var, wraplength=860).pack(anchor=tk.W, pady=(2, 8))
         ttk.Label(preview, textvariable=self._preview_life_roi_var, wraplength=860).pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(preview, textvariable=self._preview_mana_roi_var, wraplength=860).pack(anchor=tk.W, pady=(2, 0))
         ttk.Label(preview, textvariable=self._preview_target_roi_var, wraplength=860).pack(anchor=tk.W, pady=(2, 8))
@@ -511,6 +521,12 @@ class MainWindow:
     def _update_diagnostics(self, result: SessionRunResult) -> None:
         loop_result = result.healing_loop_result
         last_cycle = loop_result.last_cycle if loop_result else None
+        resolution_validation = result.resolution_validation
+
+        self._diag_resolution_var.set(
+            "resolution validation: "
+            + (resolution_validation.message if resolution_validation is not None else "unavailable")
+        )
 
         if last_cycle is None:
             self._diag_decision_var.set("decision: -")
@@ -525,9 +541,18 @@ class MainWindow:
             self._diag_target_confirmed_var.set("target confirmed: -")
             self._diag_target_oscillating_var.set("target oscillating: -")
             self._diag_target_reason_var.set("target reason: -")
-            self._diag_terminated_var.set("terminated early: -")
-            self._diag_termination_reason_var.set("termination reason: -")
-            self._diag_fail_safe_var.set("fail-safe triggered: -")
+            self._diag_terminated_var.set(
+                "terminated early: "
+                + (str(loop_result.terminated_early) if loop_result is not None else "-")
+            )
+            self._diag_termination_reason_var.set(
+                "termination reason: "
+                + ((loop_result.termination_reason or "none") if loop_result is not None else "-")
+            )
+            self._diag_fail_safe_var.set(
+                "fail-safe triggered: "
+                + (str(loop_result.fail_safe_triggered) if loop_result is not None else "-")
+            )
             return
 
         self._diag_decision_var.set(f"decision: {last_cycle.decision.reason}")
@@ -722,6 +747,7 @@ class MainWindow:
         self._selected_profile_var.set(profile.name)
         self._life_percent_var.set(str(profile.thresholds.life_percent))
         self._mana_percent_var.set(str(profile.thresholds.mana_percent))
+        self._ui_scale_var.set(str(profile.ui_scale))
         self._polling_interval_var.set(str(profile.healing_loop.polling_interval_seconds))
         self._life_cooldown_var.set(str(profile.healing_loop.life_cooldown_seconds))
         self._mana_cooldown_var.set(str(profile.healing_loop.mana_cooldown_seconds))
@@ -762,6 +788,9 @@ class MainWindow:
     def _apply_preview(self, preview: SessionPreviewResult) -> None:
         if preview.error_message or preview.window is None or preview.calibration_snapshot is None:
             self._preview_window_var.set("window: unavailable")
+            self._preview_profile_resolution_var.set("profile resolution: unavailable")
+            self._preview_resolution_validation_var.set("window validation: unavailable")
+            self._preview_roi_guidance_var.set("roi guidance: unavailable")
             self._preview_life_roi_var.set("life roi: unavailable")
             self._preview_mana_roi_var.set("mana roi: unavailable")
             self._preview_target_roi_var.set("target roi: unavailable")
@@ -776,9 +805,26 @@ class MainWindow:
 
         snapshot = preview.calibration_snapshot
         window = preview.window
+        resolution_validation = preview.resolution_validation
         self._preview_window_var.set(
             f"window: {window.title} {window.width}x{window.height} at ({window.left}, {window.top})"
         )
+        self._preview_profile_resolution_var.set(
+            f"profile resolution: {self._profile.resolution_width}x{self._profile.resolution_height} | ui_scale={self._profile.ui_scale:.2f}"
+        )
+        self._preview_resolution_validation_var.set(
+            "window validation: "
+            + (resolution_validation.message if resolution_validation is not None else "unavailable")
+        )
+        if resolution_validation is None:
+            roi_guidance = "unavailable"
+        elif not resolution_validation.profile_resolution_set:
+            roi_guidance = "profile has no baseline yet; save the profile to adopt the current window"
+        elif resolution_validation.matches_profile:
+            roi_guidance = "safe to calibrate ROI on this window"
+        else:
+            roi_guidance = "do not recalibrate ROI until the window matches the profile resolution"
+        self._preview_roi_guidance_var.set(f"roi guidance: {roi_guidance}")
         self._preview_life_roi_var.set(
             f"life roi: x={snapshot.life_bar.left}, y={snapshot.life_bar.top}, "
             f"w={snapshot.life_bar.width}, h={snapshot.life_bar.height}"
@@ -861,6 +907,9 @@ class MainWindow:
         )
         profile.thresholds.mana_percent = self._parse_int(
             self._mana_percent_var.get(), minimum=1, maximum=100, field_name="Mana %"
+        )
+        profile.ui_scale = self._parse_float(
+            self._ui_scale_var.get(), minimum=0.5, field_name="UI scale"
         )
         profile.healing_loop.polling_interval_seconds = self._parse_float(
             self._polling_interval_var.get(), minimum=0.1, field_name="Polling (s)"
@@ -1020,6 +1069,8 @@ class MainWindow:
             parts.append(
                 f"window={result.window.title} {result.window.width}x{result.window.height}"
             )
+        if result.resolution_validation is not None:
+            parts.append(f"resolution_validation={result.resolution_validation.message}")
         if result.healing_loop_result is not None:
             parts.append(f"cycles={result.healing_loop_result.cycles_completed}")
             parts.append(f"terminated_early={result.healing_loop_result.terminated_early}")
