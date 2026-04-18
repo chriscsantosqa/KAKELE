@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from typing import Callable
 
 from kakelebot.core.calibration import CalibrationService
 from kakelebot.core.config import ProfileSettings
@@ -13,6 +14,7 @@ from kakelebot.features.healing_runtime import HealingCycleResult, HealingRuntim
 class HealingLoopResult:
     cycles_completed: int
     last_cycle: HealingCycleResult | None
+    terminated_early: bool
 
 
 class HealingLoopRunner:
@@ -27,12 +29,31 @@ class HealingLoopRunner:
         self._healing_runtime = healing_runtime
         self._sleep = time.sleep
 
-    def run(self, profile: ProfileSettings) -> HealingLoopResult:
+    def run(
+        self,
+        profile: ProfileSettings,
+        should_continue: Callable[[], bool] | None = None,
+        is_paused: Callable[[], bool] | None = None,
+    ) -> HealingLoopResult:
         last_cycle: HealingCycleResult | None = None
         cycles_completed = 0
+        terminated_early = False
 
         cycle_limit = max(1, profile.healing_loop.bootstrap_cycle_limit)
         for cycle_index in range(cycle_limit):
+            if should_continue is not None and not should_continue():
+                terminated_early = True
+                break
+
+            while is_paused is not None and is_paused():
+                if should_continue is not None and not should_continue():
+                    terminated_early = True
+                    break
+                self._sleep(0.1)
+
+            if terminated_early:
+                break
+
             window = self._window_service.get_game_window()
             snapshot = self._calibration_service.build_snapshot(window, profile)
 
@@ -54,4 +75,5 @@ class HealingLoopRunner:
         return HealingLoopResult(
             cycles_completed=cycles_completed,
             last_cycle=last_cycle,
+            terminated_early=terminated_early,
         )
