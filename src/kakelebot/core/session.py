@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from threading import RLock
 
 from kakelebot.core.calibration import CalibrationService, CalibrationSnapshot
 from kakelebot.core.capture import CaptureService, ScreenRegion
@@ -48,26 +49,41 @@ class SessionController:
         self._calibration_service = calibration_service
         self._healing_loop = healing_loop
         self._status = SessionStatus(SessionState.IDLE, "session initialized")
+        self._last_result: SessionRunResult | None = None
+        self._lock = RLock()
 
     @property
     def status(self) -> SessionStatus:
-        return self._status
+        with self._lock:
+            return self._status
+
+    @property
+    def last_result(self) -> SessionRunResult | None:
+        with self._lock:
+            return self._last_result
 
     def pause(self) -> None:
-        self._status = SessionStatus(SessionState.PAUSED, "session paused")
+        with self._lock:
+            if self._status.state == SessionState.RUNNING:
+                self._status = SessionStatus(SessionState.PAUSED, "session paused")
 
     def resume(self) -> None:
-        self._status = SessionStatus(SessionState.RUNNING, "session resumed")
+        with self._lock:
+            if self._status.state == SessionState.PAUSED:
+                self._status = SessionStatus(SessionState.RUNNING, "session resumed")
 
     def stop(self) -> None:
-        self._status = SessionStatus(SessionState.STOPPED, "session stopped")
+        with self._lock:
+            self._status = SessionStatus(SessionState.STOPPED, "session stopped")
 
     def start_healing_bootstrap_session(
         self,
         profile: ProfileSettings,
         profile_path,
     ) -> SessionRunResult:
-        self._status = SessionStatus(SessionState.RUNNING, "healing bootstrap session started")
+        with self._lock:
+            self._status = SessionStatus(SessionState.RUNNING, "healing bootstrap session started")
+            self._last_result = None
 
         try:
             window = self._window_service.get_game_window()
@@ -78,24 +94,48 @@ class SessionController:
             self._calibration_service.save_profile(profile_path, profile)
             calibration_snapshot = self._calibration_service.build_snapshot(window, profile)
 
-            healing_loop_result = self._healing_loop.run(profile)
-            self._status = SessionStatus(SessionState.COMPLETED, "healing bootstrap session completed")
+            healing_loop_result = self._healing_loop.run(
+                profile,
+                should_continue=self._should_continue,
+                is_paused=self._is_paused,
+            )
 
-            return SessionRunResult(
-                status=self._status,
+            with self._lock:
+                if self._status.state == SessionState.STOPPED:
+                    final_status = self._status
+                else:
+                    final_status = SessionStatus(SessionState.COMPLETED, "healing bootstrap session completed")
+                    self._status = final_status
+
+            result = SessionRunResult(
+                status=final_status,
                 window=window,
                 whole_window_region=whole_window_region,
                 calibration_snapshot=calibration_snapshot,
                 healing_loop_result=healing_loop_result,
                 error_message=None,
             )
+            with self._lock:
+                self._last_result = result
+            return result
         except (WindowDiscoveryError, RuntimeError) as error:
-            self._status = SessionStatus(SessionState.FAILED, str(error))
-            return SessionRunResult(
-                status=self._status,
-                window=None,
-                whole_window_region=None,
-                calibration_snapshot=None,
-                healing_loop_result=None,
-                error_message=str(error),
-            )
+            with self._lock:
+                self._status = SessionStatus(SessionState.FAILED, str(error))
+                result = SessionRunResult(
+                    status=self._status,
+                    window=None,
+                    whole_window_region=None,
+                    calibration_snapshot=None,
+                    healing_loop_result=None,
+                    error_message=str(error),
+                )
+                self._last_result = result
+                return result
+
+    def _should_continue(self) -> bool:
+        with self._lock:
+            return self._status.state != SessionState.STOPPED
+
+    def _is_paused(self) -> bool:
+        with self._lock:
+            return self._status.state == SessionState.PAUSED
