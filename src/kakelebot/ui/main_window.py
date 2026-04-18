@@ -6,6 +6,7 @@ from pathlib import Path
 from tkinter import ttk
 
 from kakelebot.core.config import ProfileSettings, save_profile
+from kakelebot.core.profile_manager import ProfileManager
 from kakelebot.core.session import SessionController, SessionPreviewResult, SessionRunResult, SessionState
 
 
@@ -15,10 +16,12 @@ class MainWindow:
         session_controller: SessionController,
         profile: ProfileSettings,
         profile_path: Path,
+        profile_manager: ProfileManager | None = None,
     ) -> None:
         self._session_controller = session_controller
         self._profile = profile
         self._profile_path = profile_path
+        self._profile_manager = profile_manager
         self._worker: threading.Thread | None = None
         self._last_session_result: SessionRunResult | None = None
         self._life_preview_image = None
@@ -28,13 +31,15 @@ class MainWindow:
 
         self.root = tk.Tk()
         self.root.title("KakeleBot Next")
-        self.root.geometry("1280x900")
-        self.root.minsize(1120, 760)
+        self.root.geometry("1280x940")
+        self.root.minsize(1120, 800)
 
         self._status_var = tk.StringVar(value="idle")
         self._profile_var = tk.StringVar(value=f"profile: {profile.name}")
         self._cycles_var = tk.StringVar(value="cycles: -")
         self._message_var = tk.StringVar(value="session initialized")
+        self._selected_profile_var = tk.StringVar(value=profile.name)
+        self._new_profile_name_var = tk.StringVar(value="")
 
         self._life_percent_var = tk.StringVar(value=str(profile.thresholds.life_percent))
         self._mana_percent_var = tk.StringVar(value=str(profile.thresholds.mana_percent))
@@ -78,6 +83,7 @@ class MainWindow:
         self._ocr_mana_reading_var = tk.StringVar(value="mana reading: -")
 
         self._build_layout()
+        self._refresh_profile_list()
         self._schedule_refresh()
 
     def _build_layout(self) -> None:
@@ -99,6 +105,8 @@ class MainWindow:
         left_panel = ttk.Frame(body)
         left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 16))
 
+        if self._profile_manager is not None:
+            self._build_profile_manager(left_panel)
         self._build_actions(left_panel)
         self._build_config_editor(left_panel)
         self._build_roi_editor(left_panel)
@@ -109,6 +117,29 @@ class MainWindow:
         self._build_diagnostics(right_panel)
         self._build_preview_panel(right_panel)
         self._build_output(right_panel)
+
+    def _build_profile_manager(self, parent: ttk.Frame) -> None:
+        manager = ttk.LabelFrame(parent, text="Profiles", padding=12)
+        manager.pack(fill=tk.X, pady=(0, 12))
+
+        ttk.Label(manager, text="Selected profile").pack(anchor=tk.W)
+        self._profile_selector = ttk.Combobox(
+            manager,
+            textvariable=self._selected_profile_var,
+            state="readonly",
+            width=24,
+        )
+        self._profile_selector.pack(fill=tk.X, pady=(4, 8))
+
+        ttk.Button(manager, text="Load selected", command=self._on_load_selected_profile).pack(
+            fill=tk.X, pady=(0, 8)
+        )
+
+        ttk.Label(manager, text="Save current as new profile").pack(anchor=tk.W)
+        ttk.Entry(manager, textvariable=self._new_profile_name_var).pack(fill=tk.X, pady=(4, 8))
+        ttk.Button(manager, text="Save as new profile", command=self._on_save_as_new_profile).pack(
+            fill=tk.X
+        )
 
     def _build_actions(self, parent: ttk.Frame) -> None:
         actions = ttk.LabelFrame(parent, text="Session", padding=12)
@@ -289,6 +320,17 @@ class MainWindow:
         else:
             self._cycles_var.set(self._cycles_var.get().replace(" | paused", ""))
 
+    def _refresh_profile_list(self) -> None:
+        if self._profile_manager is None:
+            return
+        profile_names = [record.name for record in self._profile_manager.list_profiles()]
+        if hasattr(self, "_profile_selector"):
+            self._profile_selector["values"] = profile_names
+        if self._profile.name in profile_names:
+            self._selected_profile_var.set(self._profile.name)
+        elif profile_names:
+            self._selected_profile_var.set(profile_names[0])
+
     def _update_diagnostics(self, result: SessionRunResult) -> None:
         last_cycle = result.healing_loop_result.last_cycle if result.healing_loop_result else None
 
@@ -355,6 +397,61 @@ class MainWindow:
         else:
             self._append_output("ROI / OCR preview refreshed.\n")
 
+    def _on_load_selected_profile(self) -> None:
+        if self._profile_manager is None:
+            return
+        if self._worker is not None and self._worker.is_alive():
+            self._append_output("Load profile ignored: session is running.\n")
+            return
+        try:
+            profile, profile_path = self._profile_manager.load(self._selected_profile_var.get())
+            self._load_profile_state(profile, profile_path)
+            self._refresh_profile_list()
+            self._append_output(f"Profile loaded from {profile_path}.\n")
+        except ValueError as error:
+            self._append_output(f"Load profile failed: {error}\n")
+
+    def _on_save_as_new_profile(self) -> None:
+        if self._profile_manager is None:
+            return
+        if self._worker is not None and self._worker.is_alive():
+            self._append_output("Save as new profile ignored: session is running.\n")
+            return
+        try:
+            self._sync_form_into_profile(self._profile)
+            profile, profile_path = self._profile_manager.save_as(
+                self._profile,
+                self._new_profile_name_var.get(),
+            )
+            self._load_profile_state(profile, profile_path)
+            self._new_profile_name_var.set("")
+            self._refresh_profile_list()
+            self._append_output(f"New profile created at {profile_path}.\n")
+        except ValueError as error:
+            self._append_output(f"Create profile failed: {error}\n")
+
+    def _load_profile_state(self, profile: ProfileSettings, profile_path: Path) -> None:
+        self._profile = profile
+        self._profile_path = profile_path
+        self._profile_var.set(f"profile: {profile.name}")
+        self._selected_profile_var.set(profile.name)
+        self._life_percent_var.set(str(profile.thresholds.life_percent))
+        self._mana_percent_var.set(str(profile.thresholds.mana_percent))
+        self._polling_interval_var.set(str(profile.healing_loop.polling_interval_seconds))
+        self._life_cooldown_var.set(str(profile.healing_loop.life_cooldown_seconds))
+        self._mana_cooldown_var.set(str(profile.healing_loop.mana_cooldown_seconds))
+        self._cycle_limit_var.set(str(profile.healing_loop.bootstrap_cycle_limit))
+        self._heal_life_hotkey_var.set(profile.hotkeys.heal_life)
+        self._heal_mana_hotkey_var.set(profile.hotkeys.heal_mana)
+        self._life_left_ratio_var.set(str(profile.rois.life_bar.left_ratio))
+        self._life_top_ratio_var.set(str(profile.rois.life_bar.top_ratio))
+        self._life_width_ratio_var.set(str(profile.rois.life_bar.width_ratio))
+        self._life_height_ratio_var.set(str(profile.rois.life_bar.height_ratio))
+        self._mana_left_ratio_var.set(str(profile.rois.mana_bar.left_ratio))
+        self._mana_top_ratio_var.set(str(profile.rois.mana_bar.top_ratio))
+        self._mana_width_ratio_var.set(str(profile.rois.mana_bar.width_ratio))
+        self._mana_height_ratio_var.set(str(profile.rois.mana_bar.height_ratio))
+
     def _apply_preview(self, preview: SessionPreviewResult) -> None:
         if preview.error_message or preview.window is None or preview.calibration_snapshot is None:
             self._preview_window_var.set("window: unavailable")
@@ -418,89 +515,65 @@ class MainWindow:
 
     def _on_save_profile(self) -> None:
         try:
-            self._profile.thresholds.life_percent = self._parse_int(
-                self._life_percent_var.get(),
-                minimum=1,
-                maximum=100,
-                field_name="Life %",
-            )
-            self._profile.thresholds.mana_percent = self._parse_int(
-                self._mana_percent_var.get(),
-                minimum=1,
-                maximum=100,
-                field_name="Mana %",
-            )
-            self._profile.healing_loop.polling_interval_seconds = self._parse_float(
-                self._polling_interval_var.get(),
-                minimum=0.1,
-                field_name="Polling (s)",
-            )
-            self._profile.healing_loop.life_cooldown_seconds = self._parse_float(
-                self._life_cooldown_var.get(),
-                minimum=0.1,
-                field_name="Life cooldown (s)",
-            )
-            self._profile.healing_loop.mana_cooldown_seconds = self._parse_float(
-                self._mana_cooldown_var.get(),
-                minimum=0.1,
-                field_name="Mana cooldown (s)",
-            )
-            self._profile.healing_loop.bootstrap_cycle_limit = self._parse_int(
-                self._cycle_limit_var.get(),
-                minimum=1,
-                maximum=9999,
-                field_name="Cycle limit",
-            )
-            self._profile.hotkeys.heal_life = self._heal_life_hotkey_var.get().strip().upper()
-            self._profile.hotkeys.heal_mana = self._heal_mana_hotkey_var.get().strip().upper()
-
-            if not self._profile.hotkeys.heal_life or not self._profile.hotkeys.heal_mana:
-                raise ValueError("Life and mana hotkeys cannot be empty.")
-
+            self._sync_form_into_profile(self._profile)
             save_profile(self._profile_path, self._profile)
             self._append_output(f"Profile saved to {self._profile_path}.\n")
+            self._refresh_profile_list()
         except ValueError as error:
             self._append_output(f"Profile save failed: {error}\n")
 
+    def _sync_form_into_profile(self, profile: ProfileSettings) -> None:
+        profile.thresholds.life_percent = self._parse_int(
+            self._life_percent_var.get(), minimum=1, maximum=100, field_name="Life %"
+        )
+        profile.thresholds.mana_percent = self._parse_int(
+            self._mana_percent_var.get(), minimum=1, maximum=100, field_name="Mana %"
+        )
+        profile.healing_loop.polling_interval_seconds = self._parse_float(
+            self._polling_interval_var.get(), minimum=0.1, field_name="Polling (s)"
+        )
+        profile.healing_loop.life_cooldown_seconds = self._parse_float(
+            self._life_cooldown_var.get(), minimum=0.1, field_name="Life cooldown (s)"
+        )
+        profile.healing_loop.mana_cooldown_seconds = self._parse_float(
+            self._mana_cooldown_var.get(), minimum=0.1, field_name="Mana cooldown (s)"
+        )
+        profile.healing_loop.bootstrap_cycle_limit = self._parse_int(
+            self._cycle_limit_var.get(), minimum=1, maximum=9999, field_name="Cycle limit"
+        )
+        profile.hotkeys.heal_life = self._heal_life_hotkey_var.get().strip().upper()
+        profile.hotkeys.heal_mana = self._heal_mana_hotkey_var.get().strip().upper()
+        if not profile.hotkeys.heal_life or not profile.hotkeys.heal_mana:
+            raise ValueError("Life and mana hotkeys cannot be empty.")
+
+        profile.rois.life_bar.left_ratio = self._parse_ratio(
+            self._life_left_ratio_var.get(), field_name="Life ROI left"
+        )
+        profile.rois.life_bar.top_ratio = self._parse_ratio(
+            self._life_top_ratio_var.get(), field_name="Life ROI top"
+        )
+        profile.rois.life_bar.width_ratio = self._parse_ratio(
+            self._life_width_ratio_var.get(), field_name="Life ROI width", allow_zero=False
+        )
+        profile.rois.life_bar.height_ratio = self._parse_ratio(
+            self._life_height_ratio_var.get(), field_name="Life ROI height", allow_zero=False
+        )
+        profile.rois.mana_bar.left_ratio = self._parse_ratio(
+            self._mana_left_ratio_var.get(), field_name="Mana ROI left"
+        )
+        profile.rois.mana_bar.top_ratio = self._parse_ratio(
+            self._mana_top_ratio_var.get(), field_name="Mana ROI top"
+        )
+        profile.rois.mana_bar.width_ratio = self._parse_ratio(
+            self._mana_width_ratio_var.get(), field_name="Mana ROI width", allow_zero=False
+        )
+        profile.rois.mana_bar.height_ratio = self._parse_ratio(
+            self._mana_height_ratio_var.get(), field_name="Mana ROI height", allow_zero=False
+        )
+
     def _on_save_roi_calibration(self) -> None:
         try:
-            self._profile.rois.life_bar.left_ratio = self._parse_ratio(
-                self._life_left_ratio_var.get(),
-                field_name="Life ROI left",
-            )
-            self._profile.rois.life_bar.top_ratio = self._parse_ratio(
-                self._life_top_ratio_var.get(),
-                field_name="Life ROI top",
-            )
-            self._profile.rois.life_bar.width_ratio = self._parse_ratio(
-                self._life_width_ratio_var.get(),
-                field_name="Life ROI width",
-                allow_zero=False,
-            )
-            self._profile.rois.life_bar.height_ratio = self._parse_ratio(
-                self._life_height_ratio_var.get(),
-                field_name="Life ROI height",
-                allow_zero=False,
-            )
-            self._profile.rois.mana_bar.left_ratio = self._parse_ratio(
-                self._mana_left_ratio_var.get(),
-                field_name="Mana ROI left",
-            )
-            self._profile.rois.mana_bar.top_ratio = self._parse_ratio(
-                self._mana_top_ratio_var.get(),
-                field_name="Mana ROI top",
-            )
-            self._profile.rois.mana_bar.width_ratio = self._parse_ratio(
-                self._mana_width_ratio_var.get(),
-                field_name="Mana ROI width",
-                allow_zero=False,
-            )
-            self._profile.rois.mana_bar.height_ratio = self._parse_ratio(
-                self._mana_height_ratio_var.get(),
-                field_name="Mana ROI height",
-                allow_zero=False,
-            )
-
+            self._sync_form_into_profile(self._profile)
             save_profile(self._profile_path, self._profile)
             self._append_output(f"ROI calibration saved to {self._profile_path}.\n")
             self._on_refresh_preview()
