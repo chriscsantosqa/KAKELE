@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from threading import RLock
+from typing import Any
 
 from kakelebot.core.calibration import CalibrationService, CalibrationSnapshot
 from kakelebot.core.capture import CaptureService, ScreenRegion
@@ -33,6 +34,16 @@ class SessionRunResult:
     whole_window_region: ScreenRegion | None
     calibration_snapshot: CalibrationSnapshot | None
     healing_loop_result: HealingLoopResult | None
+    error_message: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class SessionPreviewResult:
+    status: SessionStatus
+    window: WindowInfo | None
+    calibration_snapshot: CalibrationSnapshot | None
+    life_image: Any | None
+    mana_image: Any | None
     error_message: str | None
 
 
@@ -131,6 +142,31 @@ class SessionController:
                 )
                 self._last_result = result
                 return result
+
+    def capture_preview(self, profile: ProfileSettings) -> SessionPreviewResult:
+        try:
+            window = self._window_service.get_game_window()
+            calibration_snapshot = self._calibration_service.build_snapshot(window, profile)
+            life_image = self._capture_service.capture(calibration_snapshot.life_bar)
+            mana_image = self._capture_service.capture(calibration_snapshot.mana_bar)
+
+            return SessionPreviewResult(
+                status=SessionStatus(SessionState.IDLE, "preview captured"),
+                window=window,
+                calibration_snapshot=calibration_snapshot,
+                life_image=life_image,
+                mana_image=mana_image,
+                error_message=None,
+            )
+        except (WindowDiscoveryError, RuntimeError) as error:
+            return SessionPreviewResult(
+                status=SessionStatus(SessionState.FAILED, str(error)),
+                window=None,
+                calibration_snapshot=None,
+                life_image=None,
+                mana_image=None,
+                error_message=str(error),
+            )
 
     def _should_continue(self) -> bool:
         with self._lock:
