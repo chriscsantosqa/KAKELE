@@ -52,6 +52,28 @@ class ProfileManager:
         self.set_active_profile(normalized_name)
         return new_profile, profile_path
 
+    def delete(self, profile_name: str) -> str | None:
+        normalized_name = self.normalize_name(profile_name)
+        records = self.list_profiles()
+        if len(records) <= 1:
+            raise ValueError("At least one profile must remain.")
+
+        profile_path = self._profiles_dir / f"{normalized_name}.json"
+        if not profile_path.exists():
+            raise ValueError("Profile does not exist.")
+
+        profile_path.unlink()
+
+        active_profile = self._settings.runtime.active_profile
+        if active_profile == normalized_name:
+            remaining = [record.name for record in self.list_profiles() if record.name != normalized_name]
+            fallback = remaining[0] if remaining else None
+            if fallback is not None:
+                self.set_active_profile(fallback)
+            return fallback
+
+        return active_profile
+
     def set_active_profile(self, profile_name: str) -> None:
         normalized_name = self.normalize_name(profile_name)
         self._settings.runtime.active_profile = normalized_name
