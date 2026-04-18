@@ -23,11 +23,13 @@ class MainWindow:
         self._last_session_result: SessionRunResult | None = None
         self._life_preview_image = None
         self._mana_preview_image = None
+        self._life_processed_preview_image = None
+        self._mana_processed_preview_image = None
 
         self.root = tk.Tk()
         self.root.title("KakeleBot Next")
-        self.root.geometry("1240x820")
-        self.root.minsize(1080, 720)
+        self.root.geometry("1280x900")
+        self.root.minsize(1120, 760)
 
         self._status_var = tk.StringVar(value="idle")
         self._profile_var = tk.StringVar(value=f"profile: {profile.name}")
@@ -70,6 +72,10 @@ class MainWindow:
         self._preview_window_var = tk.StringVar(value="window: -")
         self._preview_life_roi_var = tk.StringVar(value="life roi: -")
         self._preview_mana_roi_var = tk.StringVar(value="mana roi: -")
+        self._ocr_life_text_var = tk.StringVar(value="life OCR: -")
+        self._ocr_mana_text_var = tk.StringVar(value="mana OCR: -")
+        self._ocr_life_reading_var = tk.StringVar(value="life reading: -")
+        self._ocr_mana_reading_var = tk.StringVar(value="mana reading: -")
 
         self._build_layout()
         self._schedule_refresh()
@@ -85,7 +91,7 @@ class MainWindow:
         ttk.Label(header, textvariable=self._profile_var).pack(anchor=tk.W)
         ttk.Label(header, textvariable=self._status_var).pack(anchor=tk.W)
         ttk.Label(header, textvariable=self._cycles_var).pack(anchor=tk.W)
-        ttk.Label(header, textvariable=self._message_var, wraplength=1180).pack(anchor=tk.W, pady=(6, 0))
+        ttk.Label(header, textvariable=self._message_var, wraplength=1220).pack(anchor=tk.W, pady=(6, 0))
 
         body = ttk.Frame(container)
         body.pack(fill=tk.BOTH, expand=True)
@@ -112,7 +118,7 @@ class MainWindow:
         ttk.Button(actions, text="Pause", command=self._on_pause).pack(fill=tk.X, pady=(0, 6))
         ttk.Button(actions, text="Resume", command=self._on_resume).pack(fill=tk.X, pady=(0, 6))
         ttk.Button(actions, text="Stop", command=self._on_stop).pack(fill=tk.X, pady=(0, 6))
-        ttk.Button(actions, text="Refresh ROI preview", command=self._on_refresh_preview).pack(fill=tk.X)
+        ttk.Button(actions, text="Refresh ROI/OCR preview", command=self._on_refresh_preview).pack(fill=tk.X)
 
     def _build_config_editor(self, parent: ttk.Frame) -> None:
         editor = ttk.LabelFrame(parent, text="Profile configuration", padding=12)
@@ -213,28 +219,45 @@ class MainWindow:
             )
 
     def _build_preview_panel(self, parent: ttk.Frame) -> None:
-        preview = ttk.LabelFrame(parent, text="ROI Preview", padding=12)
+        preview = ttk.LabelFrame(parent, text="ROI / OCR Preview", padding=12)
         preview.pack(fill=tk.X, pady=(0, 12))
 
         ttk.Label(preview, textvariable=self._preview_window_var, wraplength=860).pack(anchor=tk.W)
         ttk.Label(preview, textvariable=self._preview_life_roi_var, wraplength=860).pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(preview, textvariable=self._preview_mana_roi_var, wraplength=860).pack(anchor=tk.W, pady=(2, 8))
+        ttk.Label(preview, textvariable=self._ocr_life_text_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W)
+        ttk.Label(preview, textvariable=self._ocr_mana_text_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 0))
+        ttk.Label(preview, textvariable=self._ocr_life_reading_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 0))
+        ttk.Label(preview, textvariable=self._ocr_mana_reading_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 8))
 
         images = ttk.Frame(preview)
         images.pack(fill=tk.X)
 
-        life_frame = ttk.LabelFrame(images, text="Life ROI", padding=8)
-        life_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8))
-        self._life_preview_label = ttk.Label(life_frame, text="No preview")
+        life_original_frame = ttk.LabelFrame(images, text="Life ROI", padding=8)
+        life_original_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 8), pady=(0, 8))
+        self._life_preview_label = ttk.Label(life_original_frame, text="No preview")
         self._life_preview_label.pack(fill=tk.BOTH, expand=True)
 
-        mana_frame = ttk.LabelFrame(images, text="Mana ROI", padding=8)
-        mana_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self._mana_preview_label = ttk.Label(mana_frame, text="No preview")
+        life_processed_frame = ttk.LabelFrame(images, text="Life OCR processed", padding=8)
+        life_processed_frame.grid(row=0, column=1, sticky="nsew", pady=(0, 8))
+        self._life_processed_preview_label = ttk.Label(life_processed_frame, text="No preview")
+        self._life_processed_preview_label.pack(fill=tk.BOTH, expand=True)
+
+        mana_original_frame = ttk.LabelFrame(images, text="Mana ROI", padding=8)
+        mana_original_frame.grid(row=1, column=0, sticky="nsew", padx=(0, 8))
+        self._mana_preview_label = ttk.Label(mana_original_frame, text="No preview")
         self._mana_preview_label.pack(fill=tk.BOTH, expand=True)
 
+        mana_processed_frame = ttk.LabelFrame(images, text="Mana OCR processed", padding=8)
+        mana_processed_frame.grid(row=1, column=1, sticky="nsew")
+        self._mana_processed_preview_label = ttk.Label(mana_processed_frame, text="No preview")
+        self._mana_processed_preview_label.pack(fill=tk.BOTH, expand=True)
+
+        images.columnconfigure(0, weight=1)
+        images.columnconfigure(1, weight=1)
+
     def _build_output(self, parent: ttk.Frame) -> None:
-        self._output = tk.Text(parent, height=18, wrap=tk.WORD)
+        self._output = tk.Text(parent, height=16, wrap=tk.WORD)
         self._output.pack(fill=tk.BOTH, expand=True)
         self._output.insert(tk.END, "UI initialized.\n")
         self._output.configure(state=tk.DISABLED)
@@ -330,17 +353,18 @@ class MainWindow:
         if preview.error_message:
             self._append_output(f"Preview refresh failed: {preview.error_message}\n")
         else:
-            self._append_output("ROI preview refreshed.\n")
+            self._append_output("ROI / OCR preview refreshed.\n")
 
     def _apply_preview(self, preview: SessionPreviewResult) -> None:
         if preview.error_message or preview.window is None or preview.calibration_snapshot is None:
             self._preview_window_var.set("window: unavailable")
             self._preview_life_roi_var.set("life roi: unavailable")
             self._preview_mana_roi_var.set("mana roi: unavailable")
-            self._life_preview_label.configure(image="", text="No preview")
-            self._mana_preview_label.configure(image="", text="No preview")
-            self._life_preview_image = None
-            self._mana_preview_image = None
+            self._ocr_life_text_var.set("life OCR: unavailable")
+            self._ocr_mana_text_var.set("mana OCR: unavailable")
+            self._ocr_life_reading_var.set("life reading: unavailable")
+            self._ocr_mana_reading_var.set("mana reading: unavailable")
+            self._clear_preview_images()
             return
 
         snapshot = preview.calibration_snapshot
@@ -357,18 +381,40 @@ class MainWindow:
             f"w={snapshot.mana_bar.width}, h={snapshot.mana_bar.height}"
         )
 
-        self._life_preview_image = self._to_tk_preview(preview.life_image)
-        self._mana_preview_image = self._to_tk_preview(preview.mana_image)
+        life_preview = preview.life_preview
+        mana_preview = preview.mana_preview
+        self._ocr_life_text_var.set(
+            "life OCR: "
+            + (life_preview.normalized_text if life_preview is not None and life_preview.normalized_text else "empty")
+        )
+        self._ocr_mana_text_var.set(
+            "mana OCR: "
+            + (mana_preview.normalized_text if mana_preview is not None and mana_preview.normalized_text else "empty")
+        )
+        self._ocr_life_reading_var.set(
+            "life reading: " + (self._format_reading(life_preview.reading) if life_preview is not None else "unavailable")
+        )
+        self._ocr_mana_reading_var.set(
+            "mana reading: " + (self._format_reading(mana_preview.reading) if mana_preview is not None else "unavailable")
+        )
 
-        if self._life_preview_image is not None:
-            self._life_preview_label.configure(image=self._life_preview_image, text="")
-        else:
-            self._life_preview_label.configure(image="", text="Preview unavailable")
+        self._life_preview_image = self._to_tk_preview(
+            life_preview.original_image if life_preview is not None else None
+        )
+        self._life_processed_preview_image = self._to_tk_preview(
+            life_preview.processed_image if life_preview is not None else None
+        )
+        self._mana_preview_image = self._to_tk_preview(
+            mana_preview.original_image if mana_preview is not None else None
+        )
+        self._mana_processed_preview_image = self._to_tk_preview(
+            mana_preview.processed_image if mana_preview is not None else None
+        )
 
-        if self._mana_preview_image is not None:
-            self._mana_preview_label.configure(image=self._mana_preview_image, text="")
-        else:
-            self._mana_preview_label.configure(image="", text="Preview unavailable")
+        self._apply_preview_image(self._life_preview_label, self._life_preview_image)
+        self._apply_preview_image(self._life_processed_preview_label, self._life_processed_preview_image)
+        self._apply_preview_image(self._mana_preview_label, self._mana_preview_image)
+        self._apply_preview_image(self._mana_processed_preview_label, self._mana_processed_preview_image)
 
     def _on_save_profile(self) -> None:
         try:
@@ -461,6 +507,16 @@ class MainWindow:
         except ValueError as error:
             self._append_output(f"ROI calibration save failed: {error}\n")
 
+    def _clear_preview_images(self) -> None:
+        self._life_preview_label.configure(image="", text="No preview")
+        self._life_processed_preview_label.configure(image="", text="No preview")
+        self._mana_preview_label.configure(image="", text="No preview")
+        self._mana_processed_preview_label.configure(image="", text="No preview")
+        self._life_preview_image = None
+        self._life_processed_preview_image = None
+        self._mana_preview_image = None
+        self._mana_processed_preview_image = None
+
     def _append_output(self, text: str) -> None:
         self._output.configure(state=tk.NORMAL)
         self._output.insert(tk.END, text)
@@ -537,8 +593,15 @@ class MainWindow:
             return None
 
         preview_image = image.copy()
-        preview_image.thumbnail((360, 120))
+        preview_image.thumbnail((320, 110))
         return ImageTk.PhotoImage(preview_image)
+
+    @staticmethod
+    def _apply_preview_image(label, image_ref) -> None:
+        if image_ref is not None:
+            label.configure(image=image_ref, text="")
+        else:
+            label.configure(image="", text="Preview unavailable")
 
     def run(self) -> None:
         self.root.mainloop()
