@@ -13,7 +13,32 @@ class ProfileRecord:
     path: Path
 
 
+@dataclass(frozen=True, slots=True)
+class ProfilePreset:
+    key: str
+    label: str
+    description: str
+
+
 class ProfileManager:
+    PRESETS: tuple[ProfilePreset, ...] = (
+        ProfilePreset(
+            key="heal_safe",
+            label="Heal Safe",
+            description="Foco em sustain, sem ataque ofensivo ativo.",
+        ),
+        ProfilePreset(
+            key="hunt_basic",
+            label="Hunt Basic",
+            description="Ataque primario estavel com haste ligada.",
+        ),
+        ProfilePreset(
+            key="combo_aggressive",
+            label="Combo Aggressive",
+            description="Ataque primario e secundario com janela de combo.",
+        ),
+    )
+
     def __init__(
         self,
         profiles_dir: Path,
@@ -31,6 +56,9 @@ class ProfileManager:
             for path in sorted(self._profiles_dir.glob("*.json"))
         ]
         return records
+
+    def list_presets(self) -> tuple[ProfilePreset, ...]:
+        return self.PRESETS
 
     def load(self, profile_name: str) -> tuple[ProfileSettings, Path]:
         normalized_name = self.normalize_name(profile_name)
@@ -51,6 +79,26 @@ class ProfileManager:
         save_profile(profile_path, new_profile)
         self.set_active_profile(normalized_name)
         return new_profile, profile_path
+
+    def save_as_preset(
+        self,
+        source_profile: ProfileSettings,
+        preset_key: str,
+        new_profile_name: str,
+    ) -> tuple[ProfileSettings, Path]:
+        normalized_name = self.normalize_name(new_profile_name)
+        profile_path = self._profiles_dir / f"{normalized_name}.json"
+        new_profile = copy.deepcopy(source_profile)
+        new_profile.name = normalized_name
+        self._apply_preset(new_profile, preset_key)
+        save_profile(profile_path, new_profile)
+        self.set_active_profile(normalized_name)
+        return new_profile, profile_path
+
+    def apply_preset_to_current(self, profile: ProfileSettings, preset_key: str, profile_path: Path) -> None:
+        self._apply_preset(profile, preset_key)
+        save_profile(profile_path, profile)
+        self.set_active_profile(profile.name)
 
     def delete(self, profile_name: str) -> str | None:
         normalized_name = self.normalize_name(profile_name)
@@ -78,6 +126,76 @@ class ProfileManager:
         normalized_name = self.normalize_name(profile_name)
         self._settings.runtime.active_profile = normalized_name
         self._settings.save(self._settings_path)
+
+    def _apply_preset(self, profile: ProfileSettings, preset_key: str) -> None:
+        normalized_key = preset_key.strip().lower()
+        if normalized_key == "heal_safe":
+            self._apply_heal_safe(profile)
+            return
+        if normalized_key == "hunt_basic":
+            self._apply_hunt_basic(profile)
+            return
+        if normalized_key == "combo_aggressive":
+            self._apply_combo_aggressive(profile)
+            return
+        raise ValueError("Unknown preset.")
+
+    @staticmethod
+    def _apply_heal_safe(profile: ProfileSettings) -> None:
+        profile.buffs.haste_enabled = False
+        profile.buffs.haste_interval_seconds = 30.0
+        profile.buffs.haste_cooldown_seconds = 1.0
+
+        profile.combat.attack_enabled = False
+        profile.combat.attack_cooldown_seconds = 0.5
+        profile.combat.secondary_attack_enabled = False
+        profile.combat.secondary_attack_cooldown_seconds = 2.0
+        profile.combat.secondary_attack_after_primary_only = True
+        profile.combat.secondary_attack_combo_window_seconds = 1.0
+        profile.combat.target_confirmation_cycles = 3
+        profile.combat.target_stability_window = 5
+        profile.combat.max_target_text_variants = 1
+
+        profile.healing_loop.continuous_mode = True
+        profile.healing_loop.polling_interval_seconds = 0.35
+
+    @staticmethod
+    def _apply_hunt_basic(profile: ProfileSettings) -> None:
+        profile.buffs.haste_enabled = True
+        profile.buffs.haste_interval_seconds = 20.0
+        profile.buffs.haste_cooldown_seconds = 1.0
+
+        profile.combat.attack_enabled = True
+        profile.combat.attack_cooldown_seconds = 0.35
+        profile.combat.secondary_attack_enabled = False
+        profile.combat.secondary_attack_cooldown_seconds = 2.0
+        profile.combat.secondary_attack_after_primary_only = True
+        profile.combat.secondary_attack_combo_window_seconds = 1.0
+        profile.combat.target_confirmation_cycles = 2
+        profile.combat.target_stability_window = 4
+        profile.combat.max_target_text_variants = 2
+
+        profile.healing_loop.continuous_mode = True
+        profile.healing_loop.polling_interval_seconds = 0.25
+
+    @staticmethod
+    def _apply_combo_aggressive(profile: ProfileSettings) -> None:
+        profile.buffs.haste_enabled = True
+        profile.buffs.haste_interval_seconds = 18.0
+        profile.buffs.haste_cooldown_seconds = 1.0
+
+        profile.combat.attack_enabled = True
+        profile.combat.attack_cooldown_seconds = 0.25
+        profile.combat.secondary_attack_enabled = True
+        profile.combat.secondary_attack_cooldown_seconds = 1.2
+        profile.combat.secondary_attack_after_primary_only = True
+        profile.combat.secondary_attack_combo_window_seconds = 0.8
+        profile.combat.target_confirmation_cycles = 2
+        profile.combat.target_stability_window = 4
+        profile.combat.max_target_text_variants = 2
+
+        profile.healing_loop.continuous_mode = True
+        profile.healing_loop.polling_interval_seconds = 0.2
 
     @staticmethod
     def normalize_name(raw_name: str) -> str:
