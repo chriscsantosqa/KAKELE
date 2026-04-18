@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from typing import Protocol
 
+from kakelebot.core.image_processing import ImagePreprocessor
+
 
 class OcrAdapter(Protocol):
     def image_to_string(self, image, config: str | None = None) -> str:
@@ -25,11 +27,13 @@ class BarReading:
 
 
 class VisionService:
-    def __init__(self, ocr_adapter: OcrAdapter) -> None:
+    def __init__(self, ocr_adapter: OcrAdapter, preprocessor: ImagePreprocessor | None = None) -> None:
         self._ocr = ocr_adapter
+        self._preprocessor = preprocessor or ImagePreprocessor()
 
     def read_bar_value(self, image) -> BarReading | None:
-        raw_text = self._ocr.image_to_string(image, config="--psm 7")
+        prepared_image = self._preprocessor.preprocess_bar(image)
+        raw_text = self._ocr.image_to_string(prepared_image, config="--psm 7")
         normalized = self._normalize(raw_text)
         numbers = self._extract_numbers(normalized)
 
