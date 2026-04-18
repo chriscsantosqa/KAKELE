@@ -24,8 +24,8 @@ class MainWindow:
 
         self.root = tk.Tk()
         self.root.title("KakeleBot Next")
-        self.root.geometry("980x640")
-        self.root.minsize(860, 560)
+        self.root.geometry("1120x700")
+        self.root.minsize(960, 620)
 
         self._status_var = tk.StringVar(value="idle")
         self._profile_var = tk.StringVar(value=f"profile: {profile.name}")
@@ -49,6 +49,13 @@ class MainWindow:
         self._heal_life_hotkey_var = tk.StringVar(value=profile.hotkeys.heal_life)
         self._heal_mana_hotkey_var = tk.StringVar(value=profile.hotkeys.heal_mana)
 
+        self._diag_decision_var = tk.StringVar(value="decision: -")
+        self._diag_life_var = tk.StringVar(value="life: -")
+        self._diag_mana_var = tk.StringVar(value="mana: -")
+        self._diag_actions_var = tk.StringVar(value="actions executed: -")
+        self._diag_suppressed_var = tk.StringVar(value="actions suppressed: -")
+        self._diag_terminated_var = tk.StringVar(value="terminated early: -")
+
         self._build_layout()
         self._schedule_refresh()
 
@@ -63,7 +70,7 @@ class MainWindow:
         ttk.Label(header, textvariable=self._profile_var).pack(anchor=tk.W)
         ttk.Label(header, textvariable=self._status_var).pack(anchor=tk.W)
         ttk.Label(header, textvariable=self._cycles_var).pack(anchor=tk.W)
-        ttk.Label(header, textvariable=self._message_var, wraplength=900).pack(anchor=tk.W, pady=(6, 0))
+        ttk.Label(header, textvariable=self._message_var, wraplength=1040).pack(anchor=tk.W, pady=(6, 0))
 
         body = ttk.Frame(container)
         body.pack(fill=tk.BOTH, expand=True)
@@ -77,10 +84,8 @@ class MainWindow:
         right_panel = ttk.Frame(body)
         right_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        self._output = tk.Text(right_panel, height=28, wrap=tk.WORD)
-        self._output.pack(fill=tk.BOTH, expand=True)
-        self._output.insert(tk.END, "UI initialized.\n")
-        self._output.configure(state=tk.DISABLED)
+        self._build_diagnostics(right_panel)
+        self._build_output(right_panel)
 
     def _build_actions(self, parent: ttk.Frame) -> None:
         actions = ttk.LabelFrame(parent, text="Session", padding=12)
@@ -125,6 +130,30 @@ class MainWindow:
             pady=(12, 0),
         )
 
+    def _build_diagnostics(self, parent: ttk.Frame) -> None:
+        diagnostics = ttk.LabelFrame(parent, text="Diagnostics", padding=12)
+        diagnostics.pack(fill=tk.X, pady=(0, 12))
+
+        labels = [
+            self._diag_decision_var,
+            self._diag_life_var,
+            self._diag_mana_var,
+            self._diag_actions_var,
+            self._diag_suppressed_var,
+            self._diag_terminated_var,
+        ]
+        for variable in labels:
+            ttk.Label(diagnostics, textvariable=variable, wraplength=700, justify=tk.LEFT).pack(
+                anchor=tk.W,
+                pady=2,
+            )
+
+    def _build_output(self, parent: ttk.Frame) -> None:
+        self._output = tk.Text(parent, height=22, wrap=tk.WORD)
+        self._output.pack(fill=tk.BOTH, expand=True)
+        self._output.insert(tk.END, "UI initialized.\n")
+        self._output.configure(state=tk.DISABLED)
+
     def _schedule_refresh(self) -> None:
         self._refresh_view()
         self.root.after(250, self._schedule_refresh)
@@ -143,10 +172,44 @@ class MainWindow:
                 else "-"
             )
             self._cycles_var.set(f"cycles: {cycles_completed}")
+            self._update_diagnostics(latest)
             self._append_output(self._format_result(latest))
 
-        if status.state == SessionState.PAUSED and not self._cycles_var.get().endswith("| paused"):
-            self._cycles_var.set(self._cycles_var.get() + " | paused")
+        if status.state == SessionState.PAUSED:
+            if "| paused" not in self._cycles_var.get():
+                self._cycles_var.set(self._cycles_var.get() + " | paused")
+        else:
+            self._cycles_var.set(self._cycles_var.get().replace(" | paused", ""))
+
+    def _update_diagnostics(self, result: SessionRunResult) -> None:
+        last_cycle = result.healing_loop_result.last_cycle if result.healing_loop_result else None
+
+        if last_cycle is None:
+            self._diag_decision_var.set("decision: -")
+            self._diag_life_var.set("life: -")
+            self._diag_mana_var.set("mana: -")
+            self._diag_actions_var.set("actions executed: -")
+            self._diag_suppressed_var.set("actions suppressed: -")
+            self._diag_terminated_var.set("terminated early: -")
+            return
+
+        self._diag_decision_var.set(f"decision: {last_cycle.decision.reason}")
+        self._diag_life_var.set(f"life: {self._format_reading(last_cycle.life_reading)}")
+        self._diag_mana_var.set(f"mana: {self._format_reading(last_cycle.mana_reading)}")
+        self._diag_actions_var.set(
+            "actions executed: " + (self._format_actions(last_cycle.actions_executed) or "none")
+        )
+        self._diag_suppressed_var.set(
+            "actions suppressed: " + (", ".join(last_cycle.suppressed_actions) or "none")
+        )
+        self._diag_terminated_var.set(
+            "terminated early: "
+            + (
+                str(result.healing_loop_result.terminated_early)
+                if result.healing_loop_result is not None
+                else "-"
+            )
+        )
 
     def _on_start(self) -> None:
         if self._worker is not None and self._worker.is_alive():
@@ -249,6 +312,21 @@ class MainWindow:
             )
             parts.append(f"last_cycle={result.healing_loop_result.last_cycle}")
         return "\n".join(parts) + "\n\n"
+
+    @staticmethod
+    def _format_reading(reading) -> str:
+        if reading is None:
+            return "unavailable"
+        return (
+            f"{reading.current}/{reading.maximum} "
+            f"({reading.percentage:.1f}%) source='{reading.source_text}'"
+        )
+
+    @staticmethod
+    def _format_actions(actions) -> str:
+        if not actions:
+            return ""
+        return ", ".join(f"{action.key} [{action.reason}]" for action in actions)
 
     @staticmethod
     def _parse_int(raw: str, minimum: int, maximum: int, field_name: str) -> int:
