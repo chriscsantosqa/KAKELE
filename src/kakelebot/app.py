@@ -5,9 +5,12 @@ import logging
 from kakelebot.core.calibration import CalibrationService
 from kakelebot.core.capture import CaptureService
 from kakelebot.core.runtime import RuntimeBootstrap
+from kakelebot.core.vision import VisionService
 from kakelebot.core.window import WindowDiscoveryError, WindowService
+from kakelebot.features.healing import HealingService
 from kakelebot.infra.pyautogui_capture_adapter import PyAutoGuiCaptureAdapter
 from kakelebot.infra.pygetwindow_adapter import PyGetWindowAdapter
+from kakelebot.infra.pytesseract_adapter import PyTesseractAdapter
 
 
 logger = logging.getLogger(__name__)
@@ -28,6 +31,7 @@ def run() -> int:
     window_service = WindowService(adapter=PyGetWindowAdapter())
     capture_service = CaptureService(adapter=PyAutoGuiCaptureAdapter())
     calibration_service = CalibrationService()
+    healing_service = HealingService()
 
     try:
         game_window = window_service.get_game_window()
@@ -77,6 +81,32 @@ def run() -> int:
             f"target={snapshot.target_status.width}x{snapshot.target_status.height}, "
             f"minimap={snapshot.minimap.width}x{snapshot.minimap.height}"
         )
+
+        try:
+            vision_service = VisionService(PyTesseractAdapter())
+            life_image = capture_service.capture(snapshot.life_bar)
+            mana_image = capture_service.capture(snapshot.mana_bar)
+
+            life_reading = vision_service.read_bar_value(life_image)
+            mana_reading = vision_service.read_bar_value(mana_image)
+
+            decision = healing_service.evaluate(
+                life=life_reading,
+                mana=mana_reading,
+                life_threshold_percent=runtime.profile.thresholds.life_percent,
+                mana_threshold_percent=runtime.profile.thresholds.mana_percent,
+            )
+
+            logger.info("Life OCR reading: %s", life_reading)
+            logger.info("Mana OCR reading: %s", mana_reading)
+            logger.info("Healing decision: %s", decision)
+
+            print(f"Life OCR reading: {life_reading}")
+            print(f"Mana OCR reading: {mana_reading}")
+            print(f"Healing decision: {decision.reason}")
+        except RuntimeError as error:
+            logger.warning("OCR bootstrap unavailable: %s", error)
+            print(f"OCR bootstrap unavailable: {error}")
     except WindowDiscoveryError as error:
         logger.warning("%s", error)
         print(str(error))
