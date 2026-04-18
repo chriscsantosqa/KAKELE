@@ -7,7 +7,7 @@ from threading import RLock
 from kakelebot.core.calibration import CalibrationService, CalibrationSnapshot
 from kakelebot.core.capture import CaptureService, ScreenRegion
 from kakelebot.core.config import ProfileSettings
-from kakelebot.core.vision import OcrPreview, VisionService
+from kakelebot.core.vision import OcrPreview, TargetPreview, VisionService
 from kakelebot.core.window import WindowDiscoveryError, WindowInfo, WindowService
 from kakelebot.features.healing_loop import HealingLoopResult, HealingLoopRunner
 
@@ -44,6 +44,7 @@ class SessionPreviewResult:
     calibration_snapshot: CalibrationSnapshot | None
     life_preview: OcrPreview | None
     mana_preview: OcrPreview | None
+    target_preview: TargetPreview | None
     error_message: str | None
 
 
@@ -157,8 +158,10 @@ class SessionController:
             calibration_snapshot = self._calibration_service.build_snapshot(window, profile)
             life_image = self._capture_service.capture(calibration_snapshot.life_bar)
             mana_image = self._capture_service.capture(calibration_snapshot.mana_bar)
+            target_image = self._capture_service.capture(calibration_snapshot.target_status)
             life_preview = self._vision_service.build_preview(life_image)
             mana_preview = self._vision_service.build_preview(mana_image)
+            target_preview = self._vision_service.build_target_preview(target_image)
 
             return SessionPreviewResult(
                 status=SessionStatus(SessionState.IDLE, "preview captured"),
@@ -166,6 +169,7 @@ class SessionController:
                 calibration_snapshot=calibration_snapshot,
                 life_preview=life_preview,
                 mana_preview=mana_preview,
+                target_preview=target_preview,
                 error_message=None,
             )
         except (WindowDiscoveryError, RuntimeError) as error:
@@ -175,6 +179,7 @@ class SessionController:
                 calibration_snapshot=None,
                 life_preview=None,
                 mana_preview=None,
+                target_preview=None,
                 error_message=str(error),
             )
 
