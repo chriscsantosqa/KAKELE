@@ -43,6 +43,7 @@ def run_gui() -> int:
         capture_service=capture_service,
         calibration_service=calibration_service,
         healing_loop=healing_loop,
+        vision_service=vision_service,
     )
 
     profile_path = runtime.paths.profiles / f"{runtime.profile.name}.json"
