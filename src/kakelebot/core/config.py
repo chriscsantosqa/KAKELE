@@ -38,6 +38,9 @@ class HealingLoopSettings:
     mana_cooldown_seconds: float = 1.0
     bootstrap_cycle_limit: int = 3
     continuous_mode: bool = False
+    max_actions_per_minute: int = 30
+    max_consecutive_ocr_failures: int = 10
+    max_window_missing_seconds: float = 15.0
 
 
 @dataclass(slots=True)
@@ -135,6 +138,15 @@ def _load_healing_loop(raw: dict) -> HealingLoopSettings:
         ),
         continuous_mode=raw.get(
             "continuous_mode", defaults.continuous_mode
+        ),
+        max_actions_per_minute=raw.get(
+            "max_actions_per_minute", defaults.max_actions_per_minute
+        ),
+        max_consecutive_ocr_failures=raw.get(
+            "max_consecutive_ocr_failures", defaults.max_consecutive_ocr_failures
+        ),
+        max_window_missing_seconds=raw.get(
+            "max_window_missing_seconds", defaults.max_window_missing_seconds
         ),
     )
 
