@@ -118,6 +118,14 @@ class HealingLoopRunner:
                 mana_threshold_percent=profile.thresholds.mana_percent,
                 life_cooldown_seconds=profile.healing_loop.life_cooldown_seconds,
                 mana_cooldown_seconds=profile.healing_loop.mana_cooldown_seconds,
+                hunt_enabled=profile.hunt.enabled,
+                hunt_loop_route=profile.hunt.loop_route,
+                hunt_waypoint_interval_seconds=profile.hunt.waypoint_interval_seconds,
+                hunt_move_up_hotkey=profile.hunt.move_up_hotkey,
+                hunt_move_down_hotkey=profile.hunt.move_down_hotkey,
+                hunt_move_left_hotkey=profile.hunt.move_left_hotkey,
+                hunt_move_right_hotkey=profile.hunt.move_right_hotkey,
+                hunt_waypoints=profile.hunt.waypoints,
                 window_is_active=window.is_active,
             )
             cycles_completed += 1

@@ -41,6 +41,22 @@ class ProfileConfigPanel:
         attack_enabled_var: tk.BooleanVar,
         secondary_attack_enabled_var: tk.BooleanVar,
         secondary_attack_after_primary_only_var: tk.BooleanVar,
+        hunt_enabled_var: tk.BooleanVar,
+        hunt_loop_route_var: tk.BooleanVar,
+        hunt_waypoint_interval_var: tk.StringVar,
+        hunt_move_up_hotkey_var: tk.StringVar,
+        hunt_move_down_hotkey_var: tk.StringVar,
+        hunt_move_left_hotkey_var: tk.StringVar,
+        hunt_move_right_hotkey_var: tk.StringVar,
+        hunt_route_preview_var: tk.StringVar,
+        on_add_hunt_up: Callable[[], None],
+        on_add_hunt_down: Callable[[], None],
+        on_add_hunt_left: Callable[[], None],
+        on_add_hunt_right: Callable[[], None],
+        on_remove_last_hunt_waypoint: Callable[[], None],
+        on_clear_hunt_waypoints: Callable[[], None],
+        on_start_hunt_recording: Callable[[], None],
+        on_stop_hunt_recording: Callable[[], None],
         on_save_profile: Callable[[], None],
     ) -> None:
         frame = ttk.LabelFrame(parent, text="Automation configuration", padding=12)
@@ -95,7 +111,27 @@ class ProfileConfigPanel:
             secondary_attack_after_primary_only_var=secondary_attack_after_primary_only_var,
             on_save_profile=on_save_profile,
         )
-        self._build_hunt_tab(hunt_tab)
+        self._build_hunt_tab(
+            hunt_tab,
+            hunt_enabled_var=hunt_enabled_var,
+            hunt_loop_route_var=hunt_loop_route_var,
+            hunt_waypoint_interval_var=hunt_waypoint_interval_var,
+            hunt_move_up_hotkey_var=hunt_move_up_hotkey_var,
+            hunt_move_down_hotkey_var=hunt_move_down_hotkey_var,
+            hunt_move_left_hotkey_var=hunt_move_left_hotkey_var,
+            hunt_move_right_hotkey_var=hunt_move_right_hotkey_var,
+            hunt_route_preview_var=hunt_route_preview_var,
+            hunt_recording_status_var=hunt_recording_status_var,
+            on_add_hunt_up=on_add_hunt_up,
+            on_add_hunt_down=on_add_hunt_down,
+            on_add_hunt_left=on_add_hunt_left,
+            on_add_hunt_right=on_add_hunt_right,
+            on_remove_last_hunt_waypoint=on_remove_last_hunt_waypoint,
+            on_clear_hunt_waypoints=on_clear_hunt_waypoints,
+            on_start_hunt_recording=on_start_hunt_recording,
+            on_stop_hunt_recording=on_stop_hunt_recording,
+            on_save_profile=on_save_profile,
+        )
 
     def _build_heal_tab(
         self,
@@ -196,42 +232,114 @@ class ProfileConfigPanel:
         )
         parent.columnconfigure(1, weight=1)
 
-    def _build_hunt_tab(self, parent) -> None:
-        ttk.Label(parent, text="Hunt / Cavebot", font=("Segoe UI", 10, "bold")).grid(
-            row=0,
+    def _build_hunt_tab(self, parent, **kwargs) -> None:
+        ttk.Checkbutton(
+            parent,
+            text="Enable Hunt / Cavebot",
+            variable=kwargs["hunt_enabled_var"],
+        ).grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 6))
+
+        ttk.Checkbutton(
+            parent,
+            text="Loop route",
+            variable=kwargs["hunt_loop_route_var"],
+        ).grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=(0, 10))
+
+        fields = [
+            ("Waypoint interval (s)", kwargs["hunt_waypoint_interval_var"], False),
+            ("Move Up hotkey", kwargs["hunt_move_up_hotkey_var"], True),
+            ("Move Down hotkey", kwargs["hunt_move_down_hotkey_var"], True),
+            ("Move Left hotkey", kwargs["hunt_move_left_hotkey_var"], True),
+            ("Move Right hotkey", kwargs["hunt_move_right_hotkey_var"], True),
+        ]
+        self._build_form_grid(parent, fields)
+
+        base_row = len(fields) + 2
+
+        ttk.Label(parent, textvariable=kwargs["hunt_recording_status_var"]).grid(
+            row=base_row,
             column=0,
+            columnspan=2,
             sticky=tk.W,
-            pady=(0, 8),
+            pady=(10, 6),
         )
+
+        recorder_actions = ttk.Frame(parent)
+        recorder_actions.grid(row=base_row + 1, column=0, columnspan=2, sticky=tk.EW)
+
+        ttk.Button(
+            recorder_actions,
+            text="Start recording",
+            command=kwargs["on_start_hunt_recording"],
+        ).pack(side=tk.LEFT, padx=(0, 6))
+
+        ttk.Button(
+            recorder_actions,
+            text="Stop recording",
+            command=kwargs["on_stop_hunt_recording"],
+        ).pack(side=tk.LEFT)
+
+        ttk.Label(parent, text="Route builder", font=("Segoe UI", 9, "bold")).grid(
+            row=base_row + 2,
+            column=0,
+            columnspan=2,
+            sticky=tk.W,
+            pady=(12, 6),
+        )
+
+        buttons = ttk.Frame(parent)
+        buttons.grid(row=base_row + 3, column=0, columnspan=2, sticky=tk.EW)
+
+        ttk.Button(buttons, text="Add Up", command=kwargs["on_add_hunt_up"]).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(buttons, text="Add Down", command=kwargs["on_add_hunt_down"]).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(buttons, text="Add Left", command=kwargs["on_add_hunt_left"]).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(buttons, text="Add Right", command=kwargs["on_add_hunt_right"]).pack(side=tk.LEFT)
+
+        buttons2 = ttk.Frame(parent)
+        buttons2.grid(row=base_row + 4, column=0, columnspan=2, sticky=tk.EW, pady=(6, 0))
+
+        ttk.Button(
+            buttons2,
+            text="Remove last",
+            command=kwargs["on_remove_last_hunt_waypoint"],
+        ).pack(side=tk.LEFT, padx=(0, 6))
+
+        ttk.Button(
+            buttons2,
+            text="Clear route",
+            command=kwargs["on_clear_hunt_waypoints"],
+        ).pack(side=tk.LEFT)
+
+        ttk.Label(parent, text="Recorded route").grid(
+            row=base_row + 5,
+            column=0,
+            columnspan=2,
+            sticky=tk.W,
+            pady=(10, 4),
+        )
+
         ttk.Label(
             parent,
-            text=(
-                "Waypoint capture and looped farm routes are reserved for the next block. "
-                "This tab was created to separate Hunt from Heal and Target configuration."
-            ),
+            textvariable=kwargs["hunt_route_preview_var"],
             wraplength=360,
             justify="left",
-        ).grid(row=1, column=0, sticky=tk.W)
-        ttk.Label(
-            parent,
-            text="Planned items:",
-            font=("Segoe UI", 9, "bold"),
-        ).grid(row=2, column=0, sticky=tk.W, pady=(12, 4))
-        for index, text in enumerate(
-            (
-                "Capture current waypoint from the game window.",
-                "Store route points for loop navigation.",
-                "Enable route execution for farming.",
-            ),
-            start=3,
-        ):
-            ttk.Label(parent, text=f"• {text}", wraplength=360, justify="left").grid(
-                row=index,
-                column=0,
-                sticky=tk.W,
-                pady=2,
-            )
+        ).grid(
+            row=base_row + 6,
+            column=0,
+            columnspan=2,
+            sticky=tk.W,
+        )
 
+        ttk.Button(parent, text="Save profile", command=kwargs["on_save_profile"]).grid(
+            row=base_row + 7,
+            column=0,
+            columnspan=2,
+            sticky=tk.EW,
+            pady=(12, 0),
+        )
+
+        parent.columnconfigure(1, weight=1)
+    
     def _build_form_grid(self, parent, fields: list[tuple[str, tk.StringVar, bool]]) -> None:
         for row_index, (label, variable, is_hotkey) in enumerate(fields):
             ttk.Label(parent, text=label).grid(row=row_index, column=0, sticky=tk.W, pady=4)

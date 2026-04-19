@@ -80,6 +80,8 @@ class HealingLoopSettings:
 class HuntWaypoint:
     direction: str
     repeats: int = 1
+    relative_x: int = 0
+    relative_y: int = 0
 
 
 @dataclass(slots=True)
@@ -326,6 +328,8 @@ def _load_hunt(raw: dict) -> HuntSettings:
                 HuntWaypoint(
                     direction=direction,
                     repeats=max(1, _coerce_int(item.get("repeats"), 1)),
+                    relative_x=_coerce_int(item.get("relative_x"), 0),
+                    relative_y=_coerce_int(item.get("relative_y"), 0),
                 )
             )
     return HuntSettings(

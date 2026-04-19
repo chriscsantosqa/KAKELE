@@ -8,7 +8,8 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-from kakelebot.core.config import ProfileSettings, save_profile
+from kakelebot.core.config import HuntWaypoint, ProfileSettings, save_profile
+from kakelebot.features.hunt_recorder import HuntRecorder
 from kakelebot.core.global_hotkeys import GlobalHotkeyService
 from kakelebot.core.profile_manager import ProfileManager
 from kakelebot.core.session import SessionController, SessionPreviewResult, SessionRunResult, SessionState
@@ -150,6 +151,26 @@ class MainWindow:
         self._target_top_ratio_var = tk.StringVar(value=str(profile.rois.target_status.top_ratio))
         self._target_width_ratio_var = tk.StringVar(value=str(profile.rois.target_status.width_ratio))
         self._target_height_ratio_var = tk.StringVar(value=str(profile.rois.target_status.height_ratio))
+        self._hunt_enabled_var = tk.BooleanVar(value=profile.hunt.enabled)
+        self._hunt_loop_route_var = tk.BooleanVar(value=profile.hunt.loop_route)
+        self._hunt_waypoint_interval_var = tk.StringVar(value=str(profile.hunt.waypoint_interval_seconds))
+        self._hunt_move_up_hotkey_var = tk.StringVar(value=profile.hunt.move_up_hotkey)
+        self._hunt_move_down_hotkey_var = tk.StringVar(value=profile.hunt.move_down_hotkey)
+        self._hunt_move_left_hotkey_var = tk.StringVar(value=profile.hunt.move_left_hotkey)
+        self._hunt_move_right_hotkey_var = tk.StringVar(value=profile.hunt.move_right_hotkey)
+        self._hunt_waypoints: list[HuntWaypoint] = [
+            HuntWaypoint(
+                direction=waypoint.direction,
+                repeats=waypoint.repeats,
+                relative_x=waypoint.relative_x,
+                relative_y=waypoint.relative_y,
+            )
+            for waypoint in profile.hunt.waypoints
+        ]
+        self._hunt_route_preview_var = tk.StringVar(value=self._format_hunt_waypoints(self._hunt_waypoints))
+        self._hunt_recording_status_var = tk.StringVar(value="hunt recording: idle")
+        self._hunt_recorder = HuntRecorder()
+        self._diag_hunt_var = tk.StringVar(value="hunt status: -")
         self._roi_nudge_step_var = tk.StringVar(value="0.002")
 
         self._diag_decision_var = tk.StringVar(value="decision: -")
@@ -311,6 +332,22 @@ class MainWindow:
             attack_enabled_var=self._attack_enabled_var,
             secondary_attack_enabled_var=self._secondary_attack_enabled_var,
             secondary_attack_after_primary_only_var=self._secondary_attack_after_primary_only_var,
+            hunt_enabled_var=self._hunt_enabled_var,
+            hunt_loop_route_var=self._hunt_loop_route_var,
+            hunt_waypoint_interval_var=self._hunt_waypoint_interval_var,
+            hunt_move_up_hotkey_var=self._hunt_move_up_hotkey_var,
+            hunt_move_down_hotkey_var=self._hunt_move_down_hotkey_var,
+            hunt_move_left_hotkey_var=self._hunt_move_left_hotkey_var,
+            hunt_move_right_hotkey_var=self._hunt_move_right_hotkey_var,
+            hunt_route_preview_var=self._hunt_route_preview_var,
+            on_add_hunt_up=lambda: self._on_add_hunt_waypoint("UP"),
+            on_add_hunt_down=lambda: self._on_add_hunt_waypoint("DOWN"),
+            on_add_hunt_left=lambda: self._on_add_hunt_waypoint("LEFT"),
+            on_add_hunt_right=lambda: self._on_add_hunt_waypoint("RIGHT"),
+            on_remove_last_hunt_waypoint=self._on_remove_last_hunt_waypoint,
+            on_clear_hunt_waypoints=self._on_clear_hunt_waypoints,
+            on_start_hunt_recording=self._on_start_hunt_recording,
+            on_stop_hunt_recording=self._on_stop_hunt_recording,
             on_save_profile=self._on_save_profile,
         )
 
@@ -355,6 +392,7 @@ class MainWindow:
                 self._diag_terminated_var,
                 self._diag_termination_reason_var,
                 self._diag_fail_safe_var,
+                self._diag_hunt_var,
             ],
         )
 
@@ -418,6 +456,7 @@ class MainWindow:
 
     def _schedule_refresh(self) -> None:
         self._refresh_view()
+        self._refresh_hunt_recording_status()
         self.root.after(250, self._schedule_refresh)
 
     def _refresh_view(self) -> None:
@@ -473,6 +512,7 @@ class MainWindow:
 
         if last_cycle is None:
             self._diag_decision_var.set("decision: -")
+            self._diag_hunt_var.set("hunt status: -")
             self._diag_life_var.set("life: -")
             self._diag_mana_var.set("mana: -")
             self._diag_actions_var.set("actions executed: -")
@@ -509,6 +549,7 @@ class MainWindow:
         )
         self._diag_haste_var.set(f"haste status: {last_cycle.haste_status}")
         self._diag_attack_var.set(f"attack status: {last_cycle.attack_status}")
+        self._diag_hunt_var.set(f"hunt status: {last_cycle.hunt_status}")
         self._diag_secondary_attack_var.set(
             f"secondary attack status: {last_cycle.secondary_attack_status}"
         )
@@ -1307,6 +1348,24 @@ class MainWindow:
         self._haste_interval_var.set(str(profile.buffs.haste_interval_seconds))
         self._haste_cooldown_var.set(str(profile.buffs.haste_cooldown_seconds))
         self._attack_enabled_var.set(profile.combat.attack_enabled)
+        self._hunt_enabled_var.set(profile.hunt.enabled)
+        self._hunt_loop_route_var.set(profile.hunt.loop_route)
+        self._hunt_waypoint_interval_var.set(str(profile.hunt.waypoint_interval_seconds))
+        self._hunt_move_up_hotkey_var.set(profile.hunt.move_up_hotkey)
+        self._hunt_move_down_hotkey_var.set(profile.hunt.move_down_hotkey)
+        self._hunt_move_left_hotkey_var.set(profile.hunt.move_left_hotkey)
+        self._hunt_move_right_hotkey_var.set(profile.hunt.move_right_hotkey)
+        self._hunt_waypoints = [
+            HuntWaypoint(
+                direction=waypoint.direction,
+                repeats=waypoint.repeats,
+                relative_x=waypoint.relative_x,
+                relative_y=waypoint.relative_y,
+            )
+            for waypoint in profile.hunt.waypoints
+        ]
+        self._refresh_hunt_route_preview()
+        self._hunt_recording_status_var.set("hunt recording: idle")
         self._attack_cooldown_var.set(str(profile.combat.attack_cooldown_seconds))
         self._secondary_attack_enabled_var.set(profile.combat.secondary_attack_enabled)
         self._secondary_attack_cooldown_var.set(str(profile.combat.secondary_attack_cooldown_seconds))
@@ -1522,6 +1581,71 @@ class MainWindow:
         ):
             raise ValueError("Global, heal, haste and attack hotkeys cannot be empty.")
 
+        profile.hunt.enabled = bool(self._hunt_enabled_var.get())
+        profile.hunt.loop_route = bool(self._hunt_loop_route_var.get())
+        profile.hunt.waypoint_interval_seconds = self._parse_float(
+            self._hunt_waypoint_interval_var.get(),
+            minimum=0.01,
+            field_name="Hunt waypoint interval (s)",
+        )
+        profile.hunt.move_up_hotkey = self._hunt_move_up_hotkey_var.get().strip().upper()
+        profile.hunt.move_down_hotkey = self._hunt_move_down_hotkey_var.get().strip().upper()
+        profile.hunt.move_left_hotkey = self._hunt_move_left_hotkey_var.get().strip().upper()
+        profile.hunt.move_right_hotkey = self._hunt_move_right_hotkey_var.get().strip().upper()
+        profile.hunt.waypoints = [
+            HuntWaypoint(direction=waypoint.direction, repeats=waypoint.repeats)
+            for waypoint in self._hunt_waypoints
+        ]
+
+        if profile.hunt.enabled and not profile.hunt.waypoints:
+            raise ValueError("Hunt enabled requires at least one waypoint.")
+
+        if (
+            profile.hunt.enabled
+            and (
+                not profile.hunt.move_up_hotkey
+                or not profile.hunt.move_down_hotkey
+                or not profile.hunt.move_left_hotkey
+                or not profile.hunt.move_right_hotkey
+            )
+        ):
+            raise ValueError("Hunt movement hotkeys cannot be empty.")
+        
+        profile.hunt.enabled = bool(self._hunt_enabled_var.get())
+        profile.hunt.loop_route = bool(self._hunt_loop_route_var.get())
+        profile.hunt.waypoint_interval_seconds = self._parse_float(
+            self._hunt_waypoint_interval_var.get(),
+            minimum=0.01,
+            field_name="Hunt waypoint interval (s)",
+        )
+        profile.hunt.move_up_hotkey = self._hunt_move_up_hotkey_var.get().strip().upper()
+        profile.hunt.move_down_hotkey = self._hunt_move_down_hotkey_var.get().strip().upper()
+        profile.hunt.move_left_hotkey = self._hunt_move_left_hotkey_var.get().strip().upper()
+        profile.hunt.move_right_hotkey = self._hunt_move_right_hotkey_var.get().strip().upper()
+        profile.hunt.waypoints = [
+            HuntWaypoint(
+                direction=waypoint.direction,
+                repeats=waypoint.repeats,
+                relative_x=waypoint.relative_x,
+                relative_y=waypoint.relative_y,
+            )
+            for waypoint in self._hunt_waypoints
+        ]
+
+        if profile.hunt.enabled and not profile.hunt.waypoints:
+            raise ValueError("Hunt enabled requires at least one waypoint.")
+
+        if (
+            profile.hunt.enabled
+            and (
+                not profile.hunt.move_up_hotkey
+                or not profile.hunt.move_down_hotkey
+                or not profile.hunt.move_left_hotkey
+                or not profile.hunt.move_right_hotkey
+            )
+        ):
+            raise ValueError("Hunt movement hotkeys cannot be empty.")
+
         self._sync_roi_form_into_profile(profile)
 
     def _sync_roi_form_into_profile(self, profile: ProfileSettings) -> None:
@@ -1655,6 +1779,7 @@ class MainWindow:
         self._output.configure(state=tk.DISABLED)
 
     def _on_close(self) -> None:
+        self._hunt_recorder.stop()
         self._global_hotkeys.stop()
         self.root.destroy()
 
@@ -1735,6 +1860,155 @@ class MainWindow:
             comparator = "between 0.0 and 1.0" if allow_zero else "between >0.0 and 1.0"
             raise ValueError(f"{field_name} must be {comparator}.")
         return value
+
+    def _on_add_hunt_waypoint(self, direction: str) -> None:
+        self._hunt_waypoints.append(HuntWaypoint(direction=direction, repeats=1))
+        self._refresh_hunt_route_preview()
+
+    def _on_remove_last_hunt_waypoint(self) -> None:
+        if self._hunt_waypoints:
+            self._hunt_waypoints.pop()
+        self._refresh_hunt_route_preview()
+
+    def _on_clear_hunt_waypoints(self) -> None:
+        self._hunt_waypoints.clear()
+        self._refresh_hunt_route_preview()
+
+    def _refresh_hunt_route_preview(self) -> None:
+        self._hunt_route_preview_var.set(self._format_hunt_waypoints(self._hunt_waypoints))
+
+    @staticmethod
+    def _format_hunt_waypoints(waypoints: list[HuntWaypoint]) -> str:
+        if not waypoints:
+            return "No waypoints configured."
+        parts = [f"{waypoint.direction}x{waypoint.repeats}" for waypoint in waypoints]
+        return " -> ".join(parts)
+
+    def _on_add_hunt_waypoint(self, direction: str) -> None:
+        self._append_hunt_direction(direction)
+        self._refresh_hunt_route_preview()
+
+    def _on_remove_last_hunt_waypoint(self) -> None:
+        if not self._hunt_waypoints:
+            self._refresh_hunt_route_preview()
+            return
+
+        last = self._hunt_waypoints[-1]
+        delta_x, delta_y = self._hunt_direction_delta(last.direction)
+
+        if last.repeats > 1:
+            last.repeats -= 1
+            last.relative_x -= delta_x
+            last.relative_y -= delta_y
+        else:
+            self._hunt_waypoints.pop()
+
+        self._refresh_hunt_route_preview()
+
+    def _on_clear_hunt_waypoints(self) -> None:
+        self._hunt_waypoints.clear()
+        self._refresh_hunt_route_preview()
+
+    def _on_start_hunt_recording(self) -> None:
+        if self._worker is not None and self._worker.is_alive():
+            self._append_output("Hunt recording ignored: session is running.\n")
+            return
+
+        try:
+            self._hunt_recorder.start(
+                move_up_hotkey=self._hunt_move_up_hotkey_var.get(),
+                move_down_hotkey=self._hunt_move_down_hotkey_var.get(),
+                move_left_hotkey=self._hunt_move_left_hotkey_var.get(),
+                move_right_hotkey=self._hunt_move_right_hotkey_var.get(),
+            )
+            self._hunt_recording_status_var.set("hunt recording: recording from origin (0, 0)")
+            self._append_output(
+                "Hunt recording started. Move the character manually in the game and then click Stop recording.\n"
+            )
+        except (RuntimeError, ValueError) as error:
+            self._append_output(f"Hunt recording start failed: {error}\n")
+
+    def _on_stop_hunt_recording(self) -> None:
+        recorded = self._hunt_recorder.stop()
+        self._hunt_waypoints = [
+            HuntWaypoint(
+                direction=waypoint.direction,
+                repeats=waypoint.repeats,
+                relative_x=waypoint.relative_x,
+                relative_y=waypoint.relative_y,
+            )
+            for waypoint in recorded
+        ]
+        self._refresh_hunt_route_preview()
+
+        total_steps = sum(waypoint.repeats for waypoint in self._hunt_waypoints)
+        if self._hunt_waypoints:
+            last = self._hunt_waypoints[-1]
+            self._hunt_recording_status_var.set(
+                f"hunt recording: stopped | steps={total_steps} | end=({last.relative_x}, {last.relative_y})"
+            )
+        else:
+            self._hunt_recording_status_var.set("hunt recording: stopped | no movement captured")
+
+        self._append_output(
+            f"Hunt recording stopped. Captured waypoints={len(self._hunt_waypoints)} | steps={total_steps}\n"
+        )
+
+    def _refresh_hunt_recording_status(self) -> None:
+        snapshot = self._hunt_recorder.snapshot()
+        if not snapshot.is_recording:
+            return
+
+        self._hunt_recording_status_var.set(
+            f"hunt recording: REC | steps={snapshot.total_steps} | pos=({snapshot.relative_x}, {snapshot.relative_y})"
+        )
+        self._hunt_route_preview_var.set(self._format_hunt_waypoints(list(snapshot.waypoints)))
+
+    def _refresh_hunt_route_preview(self) -> None:
+        self._hunt_route_preview_var.set(self._format_hunt_waypoints(self._hunt_waypoints))
+
+    def _append_hunt_direction(self, direction: str) -> None:
+        delta_x, delta_y = self._hunt_direction_delta(direction)
+        current_x = self._hunt_waypoints[-1].relative_x if self._hunt_waypoints else 0
+        current_y = self._hunt_waypoints[-1].relative_y if self._hunt_waypoints else 0
+        next_x = current_x + delta_x
+        next_y = current_y + delta_y
+
+        if self._hunt_waypoints and self._hunt_waypoints[-1].direction == direction:
+            last = self._hunt_waypoints[-1]
+            last.repeats += 1
+            last.relative_x = next_x
+            last.relative_y = next_y
+            return
+
+        self._hunt_waypoints.append(
+            HuntWaypoint(
+                direction=direction,
+                repeats=1,
+                relative_x=next_x,
+                relative_y=next_y,
+            )
+        )
+
+    @staticmethod
+    def _hunt_direction_delta(direction: str) -> tuple[int, int]:
+        mapping = {
+            "UP": (0, -1),
+            "DOWN": (0, 1),
+            "LEFT": (-1, 0),
+            "RIGHT": (1, 0),
+        }
+        return mapping[direction]
+
+    @staticmethod
+    def _format_hunt_waypoints(waypoints: list[HuntWaypoint]) -> str:
+        if not waypoints:
+            return "No waypoints configured."
+        parts = [
+            f"{index + 1}:{waypoint.direction}x{waypoint.repeats}@({waypoint.relative_x},{waypoint.relative_y})"
+            for index, waypoint in enumerate(waypoints)
+        ]
+        return " | ".join(parts)
 
     def run(self) -> None:
         self.root.mainloop()
