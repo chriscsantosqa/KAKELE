@@ -45,6 +45,12 @@ class PyAutoGuiCaptureAdapter:
         image = self._capture_window_via_print_window(window)
         if image is not None:
             return image
+
+        if self._window_background_capture_required(window):
+            raise RuntimeError(
+                "Background capture failed for the Kakele window. Use the game in windowed mode, keep the window visible, and avoid fullscreen while calibrating from the bot UI."
+            )
+
         return self.capture_region(
             left=window.left,
             top=window.top,
@@ -124,3 +130,12 @@ class PyAutoGuiCaptureAdapter:
             0,
             1,
         )
+
+    def _window_background_capture_required(self, window: WindowInfo) -> bool:
+        if window.is_active:
+            return False
+        hwnd = window.hwnd
+        if hwnd is None:
+            return False
+        user32 = ctypes.windll.user32
+        return bool(user32.IsIconic(hwnd)) or not window.is_active
