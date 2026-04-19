@@ -36,12 +36,7 @@ class MainWindow:
         self._last_session_result: SessionRunResult | None = None
         self._last_preview_result: SessionPreviewResult | None = None
         self._last_preview_profile: ProfileSettings | None = None
-        self._life_preview_image = None
-        self._mana_preview_image = None
-        self._life_processed_preview_image = None
-        self._mana_processed_preview_image = None
         self._preview_panel: PreviewPanel | None = None
-        self._roi_editor_panel: RoiEditorPanel | None = None
         self._snapshot_panel: SnapshotPanel | None = None
 
         preset_values = self._preset_display_values()
@@ -386,7 +381,7 @@ class MainWindow:
         )
 
     def _build_roi_editor(self, parent: ttk.Frame) -> None:
-        self._roi_editor_panel = RoiEditorPanel(
+        RoiEditorPanel(
             parent=parent,
             roi_nudge_step_var=self._roi_nudge_step_var,
             life_left_ratio_var=self._life_left_ratio_var,
@@ -1247,14 +1242,6 @@ class MainWindow:
         if profile_data.get("ui_scale") is not None:
             self._profile.ui_scale = float(profile_data["ui_scale"])
 
-    def _on_refresh_latest_snapshot_review(self) -> None:
-        self._refresh_latest_snapshot_review()
-        metadata = self._load_latest_snapshot_metadata()
-        if metadata is None:
-            self._append_output("No latest calibration snapshot found for current profile.\n")
-            return
-        self._append_output(f"Latest calibration snapshot reviewed: {metadata.get('snapshot_name')}.\n")
-
     def _on_load_latest_snapshot_context(self) -> None:
         metadata = self._load_latest_snapshot_metadata()
         if metadata is None:
@@ -1747,10 +1734,6 @@ class MainWindow:
     def _clear_preview_images(self) -> None:
         if self._preview_panel is not None:
             self._preview_panel.clear_images()
-        self._life_preview_image = None
-        self._life_processed_preview_image = None
-        self._mana_preview_image = None
-        self._mana_processed_preview_image = None
 
     def _append_output(self, text: str) -> None:
         self._output.configure(state=tk.NORMAL)
@@ -1839,26 +1822,6 @@ class MainWindow:
             comparator = "between 0.0 and 1.0" if allow_zero else "between >0.0 and 1.0"
             raise ValueError(f"{field_name} must be {comparator}.")
         return value
-
-    @staticmethod
-    def _to_tk_preview(image):
-        if image is None:
-            return None
-        try:
-            from PIL import ImageTk
-        except ImportError:
-            return None
-
-        preview_image = image.copy()
-        preview_image.thumbnail((320, 110))
-        return ImageTk.PhotoImage(preview_image)
-
-    @staticmethod
-    def _apply_preview_image(label, image_ref) -> None:
-        if image_ref is not None:
-            label.configure(image=image_ref, text="")
-        else:
-            label.configure(image="", text="Preview unavailable")
 
     def run(self) -> None:
         self.root.mainloop()
