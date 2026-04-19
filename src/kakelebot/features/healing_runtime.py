@@ -8,6 +8,7 @@ from kakelebot.core.calibration import CalibrationSnapshot
 from kakelebot.core.capture import CaptureService
 from kakelebot.core.input import InputService, KeyAction
 from kakelebot.core.vision import BarReading, VisionService
+from kakelebot.core.window import WindowInfo
 from kakelebot.features.healing import HealingDecision, HealingService
 
 
@@ -51,6 +52,7 @@ class HealingRuntime:
 
     def execute_cycle(
         self,
+        window: WindowInfo,
         snapshot: CalibrationSnapshot,
         life_hotkey: str,
         mana_hotkey: str,
@@ -75,8 +77,16 @@ class HealingRuntime:
         mana_cooldown_seconds: float,
         window_is_active: bool,
     ) -> HealingCycleResult:
-        life_image = self._capture.capture(snapshot.life_bar)
-        mana_image = self._capture.capture(snapshot.mana_bar)
+        if not window_is_active:
+            return self._inactive_window_result(
+                haste_enabled=haste_enabled,
+                attack_enabled=attack_enabled,
+                secondary_attack_enabled=secondary_attack_enabled,
+            )
+
+        whole_window_image = self._capture.capture_window(window)
+        life_image = self._crop_from_window_buffer(window, whole_window_image, snapshot.life_bar)
+        mana_image = self._crop_from_window_buffer(window, whole_window_image, snapshot.mana_bar)
 
         life_reading = self._vision.read_bar_value(life_image)
         mana_reading = self._vision.read_bar_value(mana_image)
@@ -97,30 +107,6 @@ class HealingRuntime:
         target_oscillating = False
         target_reason = "not-evaluated"
         target_text = ""
-
-        if not window_is_active:
-            suppressed_actions.append("window-inactive")
-            if haste_enabled:
-                haste_status = "window-inactive"
-            if attack_enabled:
-                attack_status = "window-inactive"
-            if secondary_attack_enabled:
-                secondary_attack_status = "window-inactive"
-            return HealingCycleResult(
-                life_reading=life_reading,
-                mana_reading=mana_reading,
-                decision=decision,
-                actions_executed=tuple(executed_actions),
-                suppressed_actions=tuple(suppressed_actions),
-                haste_status=haste_status,
-                attack_status=attack_status,
-                secondary_attack_status=secondary_attack_status,
-                has_target=has_target,
-                target_confirmed=target_confirmed,
-                target_oscillating=target_oscillating,
-                target_reason=target_reason,
-                target_text=target_text,
-            )
 
         urgent_sustain = False
 
@@ -168,7 +154,7 @@ class HealingRuntime:
                 target_text=target_text,
             )
 
-        target_image = self._capture.capture(snapshot.target_status)
+        target_image = self._crop_from_window_buffer(window, whole_window_image, snapshot.target_status)
         target_preview = self._vision.build_target_preview(target_image)
         has_target = target_preview.has_target
         target_reason = target_preview.reason
@@ -227,6 +213,40 @@ class HealingRuntime:
             target_oscillating=target_oscillating,
             target_reason=target_reason,
             target_text=target_text,
+        )
+
+    def _inactive_window_result(
+        self,
+        *,
+        haste_enabled: bool,
+        attack_enabled: bool,
+        secondary_attack_enabled: bool,
+    ) -> HealingCycleResult:
+        suppressed_actions = ["window-inactive"]
+        return HealingCycleResult(
+            life_reading=None,
+            mana_reading=None,
+            decision=HealingDecision(False, False, "window-inactive"),
+            actions_executed=tuple(),
+            suppressed_actions=tuple(suppressed_actions),
+            haste_status="window-inactive" if haste_enabled else "disabled",
+            attack_status="window-inactive" if attack_enabled else "disabled",
+            secondary_attack_status="window-inactive" if secondary_attack_enabled else "disabled",
+            has_target=False,
+            target_confirmed=False,
+            target_oscillating=False,
+            target_reason="window-inactive",
+            target_text="",
+        )
+
+    @staticmethod
+    def _crop_from_window_buffer(window: WindowInfo, whole_window_image, region) -> object:
+        relative_left = max(0, region.left - window.left)
+        relative_top = max(0, region.top - window.top)
+        relative_right = min(window.width, relative_left + region.width)
+        relative_bottom = min(window.height, relative_top + region.height)
+        return whole_window_image.crop(
+            (relative_left, relative_top, relative_right, relative_bottom)
         )
 
     def _record_target_observation(self, has_target: bool, normalized_text: str) -> None:
