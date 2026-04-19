@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import time
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,8 @@ class PyGetWindowAdapter:
 
         ranked_windows.sort(key=lambda item: item[0])
         selected_window = ranked_windows[0][1]
+        process_name = self._get_process_name(selected_window)
+        hwnd = self._get_hwnd(selected_window)
         return WindowInfo(
             title=selected_window.title,
             left=selected_window.left,
@@ -49,7 +52,21 @@ class PyGetWindowAdapter:
             width=selected_window.width,
             height=selected_window.height,
             is_active=bool(selected_window.isActive),
+            hwnd=hwnd,
+            process_name=process_name,
         )
+
+    def activate_window(self, window: WindowInfo) -> None:
+        hwnd = window.hwnd
+        if hwnd is None:
+            return
+
+        user32 = ctypes.windll.user32
+        if user32.IsIconic(hwnd):
+            user32.ShowWindow(hwnd, 9)
+        user32.ShowWindow(hwnd, 5)
+        user32.SetForegroundWindow(hwnd)
+        time.sleep(0.05)
 
     def _rank_window(self, window: Any, requested_title: str) -> int | None:
         window_title = str(getattr(window, "title", "") or "").strip()
@@ -77,7 +94,7 @@ class PyGetWindowAdapter:
         if psutil is None:
             return None
 
-        hwnd = getattr(window, "_hWnd", None)
+        hwnd = self._get_hwnd(window)
         if hwnd is None:
             return None
 
@@ -93,3 +110,13 @@ class PyGetWindowAdapter:
             return None
 
         return Path(executable).name.lower()
+
+    @staticmethod
+    def _get_hwnd(window: Any) -> int | None:
+        hwnd = getattr(window, "_hWnd", None)
+        if hwnd is None:
+            return None
+        try:
+            return int(hwnd)
+        except (TypeError, ValueError):
+            return None
