@@ -48,6 +48,8 @@ class TargetPreview:
 
 
 class VisionService:
+    _BAR_OCR_CONFIG = "--oem 3 --psm 7 -c tessedit_char_whitelist=0123456789/"
+
     def __init__(self, ocr_adapter: OcrAdapter, preprocessor: ImagePreprocessor | None = None) -> None:
         self._ocr = ocr_adapter
         self._preprocessor = preprocessor or ImagePreprocessor()
@@ -56,9 +58,9 @@ class VisionService:
         return self.build_preview(image).reading
 
     def build_preview(self, image) -> OcrPreview:
-        prepared_image = self._preprocessor.preprocess_bar(image)
-        raw_text = self._ocr.image_to_string(prepared_image, config="--psm 7")
-        normalized = self._normalize(raw_text)
+        prepared_image = self._preprocessor.preprocess_status_bar(image)
+        raw_text = self._ocr.image_to_string(prepared_image, config=self._BAR_OCR_CONFIG)
+        normalized = self._normalize_bar_text(raw_text)
         reading = self._parse_reading(normalized)
         return OcrPreview(
             original_image=image,
@@ -110,6 +112,18 @@ class VisionService:
     @staticmethod
     def _normalize(text: str) -> str:
         return text.strip().replace("\n", " ").replace("|", "/")
+
+    @staticmethod
+    def _normalize_bar_text(text: str) -> str:
+        normalized = (
+            text.strip()
+            .replace("\n", " ")
+            .replace("|", "/")
+            .replace("\\", "/")
+            .replace(":", "/")
+            .replace(";", "/")
+        )
+        return re.sub(r"[^0-9/ ]+", "", normalized)
 
     @staticmethod
     def _extract_numbers(text: str) -> list[int]:
