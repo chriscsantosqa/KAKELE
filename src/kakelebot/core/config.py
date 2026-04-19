@@ -139,12 +139,51 @@ def save_profile(path: Path, profile: ProfileSettings) -> None:
     path.write_text(json.dumps(asdict(profile), indent=2), encoding="utf-8")
 
 
+def _coerce_float(value, fallback: float) -> float:
+    if value in (None, ""):
+        return fallback
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _coerce_int(value, fallback: int) -> int:
+    if value in (None, ""):
+        return fallback
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _coerce_bool(value, fallback: bool) -> bool:
+    if value in (None, ""):
+        return fallback
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off"}:
+            return False
+    return bool(value)
+
+
+def _coerce_str(value, fallback: str) -> str:
+    if not isinstance(value, str):
+        return fallback
+    normalized = value.strip()
+    return normalized or fallback
+
+
 def _load_normalized_region(raw: dict, fallback: NormalizedRegionSettings) -> NormalizedRegionSettings:
     return NormalizedRegionSettings(
-        left_ratio=raw.get("left_ratio", fallback.left_ratio),
-        top_ratio=raw.get("top_ratio", fallback.top_ratio),
-        width_ratio=raw.get("width_ratio", fallback.width_ratio),
-        height_ratio=raw.get("height_ratio", fallback.height_ratio),
+        left_ratio=_coerce_float(raw.get("left_ratio"), fallback.left_ratio),
+        top_ratio=_coerce_float(raw.get("top_ratio"), fallback.top_ratio),
+        width_ratio=_coerce_float(raw.get("width_ratio"), fallback.width_ratio),
+        height_ratio=_coerce_float(raw.get("height_ratio"), fallback.height_ratio),
     )
 
 
@@ -158,40 +197,67 @@ def _load_rois(raw: dict) -> RoiSettings:
     )
 
 
+def _load_hotkeys(raw: dict) -> HotkeysSettings:
+    defaults = HotkeysSettings()
+    return HotkeysSettings(
+        start_stop=_coerce_str(raw.get("start_stop"), defaults.start_stop),
+        pause_resume=_coerce_str(raw.get("pause_resume"), defaults.pause_resume),
+        heal_life=_coerce_str(raw.get("heal_life"), defaults.heal_life),
+        heal_mana=_coerce_str(raw.get("heal_mana"), defaults.heal_mana),
+        buff_haste=_coerce_str(raw.get("buff_haste"), defaults.buff_haste),
+        attack_primary=_coerce_str(raw.get("attack_primary"), defaults.attack_primary),
+        attack_secondary=_coerce_str(raw.get("attack_secondary"), defaults.attack_secondary),
+    )
+
+
+def _load_thresholds(raw: dict) -> ThresholdSettings:
+    defaults = ThresholdSettings()
+    return ThresholdSettings(
+        life_percent=_coerce_int(raw.get("life_percent"), defaults.life_percent),
+        mana_percent=_coerce_int(raw.get("mana_percent"), defaults.mana_percent),
+    )
+
+
 def _load_buffs(raw: dict) -> BuffSettings:
     defaults = BuffSettings()
     return BuffSettings(
-        haste_enabled=raw.get("haste_enabled", defaults.haste_enabled),
-        haste_interval_seconds=raw.get("haste_interval_seconds", defaults.haste_interval_seconds),
-        haste_cooldown_seconds=raw.get("haste_cooldown_seconds", defaults.haste_cooldown_seconds),
+        haste_enabled=_coerce_bool(raw.get("haste_enabled"), defaults.haste_enabled),
+        haste_interval_seconds=_coerce_float(
+            raw.get("haste_interval_seconds"), defaults.haste_interval_seconds
+        ),
+        haste_cooldown_seconds=_coerce_float(
+            raw.get("haste_cooldown_seconds"), defaults.haste_cooldown_seconds
+        ),
     )
 
 
 def _load_combat(raw: dict) -> CombatSettings:
     defaults = CombatSettings()
     return CombatSettings(
-        attack_enabled=raw.get("attack_enabled", defaults.attack_enabled),
-        attack_cooldown_seconds=raw.get("attack_cooldown_seconds", defaults.attack_cooldown_seconds),
-        secondary_attack_enabled=raw.get(
-            "secondary_attack_enabled", defaults.secondary_attack_enabled
+        attack_enabled=_coerce_bool(raw.get("attack_enabled"), defaults.attack_enabled),
+        attack_cooldown_seconds=_coerce_float(
+            raw.get("attack_cooldown_seconds"), defaults.attack_cooldown_seconds
         ),
-        secondary_attack_cooldown_seconds=raw.get(
-            "secondary_attack_cooldown_seconds", defaults.secondary_attack_cooldown_seconds
+        secondary_attack_enabled=_coerce_bool(
+            raw.get("secondary_attack_enabled"), defaults.secondary_attack_enabled
         ),
-        secondary_attack_after_primary_only=raw.get(
-            "secondary_attack_after_primary_only", defaults.secondary_attack_after_primary_only
+        secondary_attack_cooldown_seconds=_coerce_float(
+            raw.get("secondary_attack_cooldown_seconds"), defaults.secondary_attack_cooldown_seconds
         ),
-        secondary_attack_combo_window_seconds=raw.get(
-            "secondary_attack_combo_window_seconds", defaults.secondary_attack_combo_window_seconds
+        secondary_attack_after_primary_only=_coerce_bool(
+            raw.get("secondary_attack_after_primary_only"), defaults.secondary_attack_after_primary_only
         ),
-        target_confirmation_cycles=raw.get(
-            "target_confirmation_cycles", defaults.target_confirmation_cycles
+        secondary_attack_combo_window_seconds=_coerce_float(
+            raw.get("secondary_attack_combo_window_seconds"), defaults.secondary_attack_combo_window_seconds
         ),
-        target_stability_window=raw.get(
-            "target_stability_window", defaults.target_stability_window
+        target_confirmation_cycles=_coerce_int(
+            raw.get("target_confirmation_cycles"), defaults.target_confirmation_cycles
         ),
-        max_target_text_variants=raw.get(
-            "max_target_text_variants", defaults.max_target_text_variants
+        target_stability_window=_coerce_int(
+            raw.get("target_stability_window"), defaults.target_stability_window
+        ),
+        max_target_text_variants=_coerce_int(
+            raw.get("max_target_text_variants"), defaults.max_target_text_variants
         ),
     )
 
@@ -199,29 +265,29 @@ def _load_combat(raw: dict) -> CombatSettings:
 def _load_healing_loop(raw: dict) -> HealingLoopSettings:
     defaults = HealingLoopSettings()
     return HealingLoopSettings(
-        polling_interval_seconds=raw.get(
-            "polling_interval_seconds", defaults.polling_interval_seconds
+        polling_interval_seconds=_coerce_float(
+            raw.get("polling_interval_seconds"), defaults.polling_interval_seconds
         ),
-        life_cooldown_seconds=raw.get(
-            "life_cooldown_seconds", defaults.life_cooldown_seconds
+        life_cooldown_seconds=_coerce_float(
+            raw.get("life_cooldown_seconds"), defaults.life_cooldown_seconds
         ),
-        mana_cooldown_seconds=raw.get(
-            "mana_cooldown_seconds", defaults.mana_cooldown_seconds
+        mana_cooldown_seconds=_coerce_float(
+            raw.get("mana_cooldown_seconds"), defaults.mana_cooldown_seconds
         ),
-        bootstrap_cycle_limit=raw.get(
-            "bootstrap_cycle_limit", defaults.bootstrap_cycle_limit
+        bootstrap_cycle_limit=_coerce_int(
+            raw.get("bootstrap_cycle_limit"), defaults.bootstrap_cycle_limit
         ),
-        continuous_mode=raw.get(
-            "continuous_mode", defaults.continuous_mode
+        continuous_mode=_coerce_bool(
+            raw.get("continuous_mode"), defaults.continuous_mode
         ),
-        max_actions_per_minute=raw.get(
-            "max_actions_per_minute", defaults.max_actions_per_minute
+        max_actions_per_minute=_coerce_int(
+            raw.get("max_actions_per_minute"), defaults.max_actions_per_minute
         ),
-        max_consecutive_ocr_failures=raw.get(
-            "max_consecutive_ocr_failures", defaults.max_consecutive_ocr_failures
+        max_consecutive_ocr_failures=_coerce_int(
+            raw.get("max_consecutive_ocr_failures"), defaults.max_consecutive_ocr_failures
         ),
-        max_window_missing_seconds=raw.get(
-            "max_window_missing_seconds", defaults.max_window_missing_seconds
+        max_window_missing_seconds=_coerce_float(
+            raw.get("max_window_missing_seconds"), defaults.max_window_missing_seconds
         ),
     )
 
@@ -233,18 +299,18 @@ def load_profile(path: Path) -> ProfileSettings:
         return profile
 
     raw = json.loads(path.read_text(encoding="utf-8"))
-    hotkeys = HotkeysSettings(**raw.get("hotkeys", {}))
-    thresholds = ThresholdSettings(**raw.get("thresholds", {}))
+    hotkeys = _load_hotkeys(raw.get("hotkeys", {}))
+    thresholds = _load_thresholds(raw.get("thresholds", {}))
     buffs = _load_buffs(raw.get("buffs", {}))
     combat = _load_combat(raw.get("combat", {}))
     healing_loop = _load_healing_loop(raw.get("healing_loop", {}))
     rois = _load_rois(raw.get("rois", {}))
 
     return ProfileSettings(
-        name=raw.get("name", DEFAULT_PROFILE_NAME),
-        resolution_width=raw.get("resolution_width", 0),
-        resolution_height=raw.get("resolution_height", 0),
-        ui_scale=raw.get("ui_scale", 1.0),
+        name=_coerce_str(raw.get("name"), DEFAULT_PROFILE_NAME),
+        resolution_width=_coerce_int(raw.get("resolution_width"), 0),
+        resolution_height=_coerce_int(raw.get("resolution_height"), 0),
+        ui_scale=_coerce_float(raw.get("ui_scale"), 1.0),
         hotkeys=hotkeys,
         thresholds=thresholds,
         buffs=buffs,
