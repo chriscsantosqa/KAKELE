@@ -17,7 +17,7 @@ from kakelebot.infra.pyautogui_capture_adapter import PyAutoGuiCaptureAdapter
 from kakelebot.infra.pydirectinput_adapter import PyDirectInputAdapter
 from kakelebot.infra.pygetwindow_adapter import PyGetWindowAdapter
 from kakelebot.infra.pytesseract_adapter import PyTesseractAdapter
-from kakelebot.ui.main_window import MainWindow
+from kakelebot.ui.modern_main_window import ModernMainWindow
 
 
 def _build_ai_vision_assistant(settings: AppSettings):
@@ -65,7 +65,7 @@ def run_gui() -> int:
     )
 
     profile_path = runtime.paths.profiles / f"{runtime.profile.name}.json"
-    window = MainWindow(
+    window = ModernMainWindow(
         session_controller=session_controller,
         profile=runtime.profile,
         profile_path=profile_path,
