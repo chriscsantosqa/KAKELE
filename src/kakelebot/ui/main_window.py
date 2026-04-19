@@ -12,6 +12,7 @@ from kakelebot.core.config import ProfileSettings, save_profile
 from kakelebot.core.global_hotkeys import GlobalHotkeyService
 from kakelebot.core.profile_manager import ProfileManager
 from kakelebot.core.session import SessionController, SessionPreviewResult, SessionRunResult, SessionState
+from kakelebot.ui.diagnostics_panel import DiagnosticsPanel
 from kakelebot.ui.preview_panel import PreviewPanel
 from kakelebot.ui.profile_config_panel import ProfileConfigPanel
 from kakelebot.ui.profiles_panel import ProfilesPanel
@@ -303,32 +304,27 @@ class MainWindow:
         )
 
     def _build_diagnostics(self, parent: ttk.Frame) -> None:
-        diagnostics = ttk.LabelFrame(parent, text="Diagnostics", padding=12)
-        diagnostics.pack(fill=tk.X, pady=(0, 12))
-
-        labels = [
-            self._diag_decision_var,
-            self._diag_life_var,
-            self._diag_mana_var,
-            self._diag_actions_var,
-            self._diag_suppressed_var,
-            self._diag_haste_var,
-            self._diag_attack_var,
-            self._diag_secondary_attack_var,
-            self._diag_target_var,
-            self._diag_target_confirmed_var,
-            self._diag_target_oscillating_var,
-            self._diag_target_reason_var,
-            self._diag_resolution_var,
-            self._diag_terminated_var,
-            self._diag_termination_reason_var,
-            self._diag_fail_safe_var,
-        ]
-        for variable in labels:
-            ttk.Label(diagnostics, textvariable=variable, wraplength=860, justify=tk.LEFT).pack(
-                anchor=tk.W,
-                pady=2,
-            )
+        DiagnosticsPanel(
+            parent=parent,
+            diagnostic_vars=[
+                self._diag_decision_var,
+                self._diag_life_var,
+                self._diag_mana_var,
+                self._diag_actions_var,
+                self._diag_suppressed_var,
+                self._diag_haste_var,
+                self._diag_attack_var,
+                self._diag_secondary_attack_var,
+                self._diag_target_var,
+                self._diag_target_confirmed_var,
+                self._diag_target_oscillating_var,
+                self._diag_target_reason_var,
+                self._diag_resolution_var,
+                self._diag_terminated_var,
+                self._diag_termination_reason_var,
+                self._diag_fail_safe_var,
+            ],
+        )
 
     def _build_preview_panel(self, parent: ttk.Frame) -> None:
         self._preview_panel = PreviewPanel(
