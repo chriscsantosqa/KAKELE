@@ -72,6 +72,7 @@ class HealingLoopRunner:
 
             try:
                 window = self._window_service.get_game_window()
+                window = self._window_service.activate_game_window(window)
                 window_missing_since = None
             except WindowDiscoveryError:
                 now = self._time_provider()
@@ -88,7 +89,6 @@ class HealingLoopRunner:
             snapshot = self._calibration_service.build_snapshot(window, profile)
 
             last_cycle = self._healing_runtime.execute_cycle(
-                window=window,
                 snapshot=snapshot,
                 life_hotkey=profile.hotkeys.heal_life,
                 mana_hotkey=profile.hotkeys.heal_mana,
