@@ -12,6 +12,7 @@ from kakelebot.core.config import ProfileSettings, save_profile
 from kakelebot.core.global_hotkeys import GlobalHotkeyService
 from kakelebot.core.profile_manager import ProfileManager
 from kakelebot.core.session import SessionController, SessionPreviewResult, SessionRunResult, SessionState
+from kakelebot.ui.ai_analysis_history import save_ai_analysis_result
 from kakelebot.ui.ai_analysis_panel import AIAnalysisPanel
 from kakelebot.ui.diagnostics_panel import DiagnosticsPanel
 from kakelebot.ui.preview_panel import PreviewPanel
@@ -36,6 +37,7 @@ from kakelebot.ui.snapshot_utils import (
 
 class MainWindow:
     _SNAPSHOT_HISTORY_LIMIT = 10
+    _AI_ANALYSIS_HISTORY_LIMIT = 20
 
     def __init__(
         self,
@@ -540,6 +542,13 @@ class MainWindow:
         else:
             self._on_start()
 
+    def _handle_pauseResume_hotkey(self) -> None:
+        state = self._session_controller.status.state
+        if state == SessionState.RUNNING:
+            self._on_pause()
+        elif state == SessionState.PAUSED:
+            self._on_resume()
+
     def _handle_pause_resume_hotkey(self) -> None:
         state = self._session_controller.status.state
         if state == SessionState.RUNNING:
@@ -598,7 +607,9 @@ class MainWindow:
             self._append_output("Running AI visual analysis...\n")
             result = self._session_controller.analyze_visual_state(analysis_profile)
             self._apply_ai_analysis_result(result)
+            persisted_path = self._persist_ai_analysis_result(result)
             self._append_output(self._format_ai_analysis_result(result))
+            self._append_output(f"AI visual analysis saved to {persisted_path}.\n")
             if result.error_message:
                 return
             if result.suggested_rois and messagebox.askyesno(
@@ -608,7 +619,7 @@ class MainWindow:
                 self._apply_ai_roi_suggestions(result.suggested_rois)
                 self._append_output("AI ROI suggestions applied to current form.\n")
                 self._on_refresh_preview()
-        except ValueError as error:
+        except (ValueError, OSError) as error:
             self._append_output(f"AI visual analysis failed: {error}\n")
 
     def _apply_ai_analysis_result(self, result) -> None:
@@ -642,6 +653,16 @@ class MainWindow:
 
         if result.error_message:
             self._ai_issues_var.set(f"ai issues: {result.error_message}")
+
+    def _persist_ai_analysis_result(self, result) -> Path:
+        return save_ai_analysis_result(
+            self._ai_analysis_root_dir(),
+            result,
+            history_limit=self._AI_ANALYSIS_HISTORY_LIMIT,
+        )
+
+    def _ai_analysis_root_dir(self) -> Path:
+        return self._snapshot_root_dir() / "_ai_analysis"
 
     def _apply_ai_roi_suggestions(self, suggested_rois: dict) -> None:
         mapping = {
