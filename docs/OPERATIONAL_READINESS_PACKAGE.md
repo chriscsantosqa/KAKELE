@@ -32,6 +32,7 @@ Do not validate multiple environments at the same time.
 - `docs/FIRST_USE_CHECKLIST.md`
 - `docs/GPT_VISION_SETUP.md`
 - `docs/USAGE_READINESS_AND_GPT_VISION_AGENT.md`
+- `docs/FIRST_RUN_STABILIZATION.md`
 
 ## First controlled usage flow
 1. Prepare the environment.
@@ -46,6 +47,8 @@ Do not validate multiple environments at the same time.
 10. Apply ROI suggestions only with confirmation.
 11. Validate Start, Pause, Resume and Stop.
 12. Run one short observed session only.
+13. Register defects with `.github/ISSUE_TEMPLATE/first-run-bug-report.md`.
+14. Follow `docs/FIRST_RUN_STABILIZATION.md` for triage and retest.
 
 ## AI usage rule
 Use AI for:
