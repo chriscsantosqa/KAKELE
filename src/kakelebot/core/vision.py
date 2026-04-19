@@ -49,12 +49,16 @@ class TargetPreview:
 
 class VisionService:
     _BAR_OCR_CONFIG = "--oem 3 --psm 7 -c tessedit_char_whitelist=0123456789/"
+    _SYNTHETIC_BAR_MAX = 1000
 
     def __init__(self, ocr_adapter: OcrAdapter, preprocessor: ImagePreprocessor | None = None) -> None:
         self._ocr = ocr_adapter
         self._preprocessor = preprocessor or ImagePreprocessor()
 
     def read_bar_value(self, image) -> BarReading | None:
+        estimated = self._estimate_bar_reading(image)
+        if estimated is not None:
+            return estimated
         return self.build_preview(image).reading
 
     def build_preview(self, image) -> OcrPreview:
@@ -62,6 +66,8 @@ class VisionService:
         raw_text = self._ocr.image_to_string(prepared_image, config=self._BAR_OCR_CONFIG)
         normalized = self._normalize_bar_text(raw_text)
         reading = self._parse_reading(normalized)
+        if reading is None:
+            reading = self._estimate_bar_reading(image)
         return OcrPreview(
             original_image=image,
             processed_image=prepared_image,
@@ -108,6 +114,76 @@ class VisionService:
             source_text=normalized_text,
             confidence_ok=confidence_ok,
         )
+
+    def _estimate_bar_reading(self, image) -> BarReading | None:
+        fill_ratio = self._estimate_bar_fill_ratio(image)
+        if fill_ratio is None:
+            return None
+        current = max(0, min(self._SYNTHETIC_BAR_MAX, round(fill_ratio * self._SYNTHETIC_BAR_MAX)))
+        return BarReading(
+            current=current,
+            maximum=self._SYNTHETIC_BAR_MAX,
+            source_text=f"estimated:{fill_ratio * 100:.1f}%",
+            confidence_ok=True,
+        )
+
+    def _estimate_bar_fill_ratio(self, image) -> float | None:
+        rgb = image.convert("RGB")
+        width, height = rgb.size
+        if width < 12 or height < 6:
+            return None
+
+        left = max(1, round(width * 0.02))
+        right = min(width - 1, round(width * 0.98))
+        top = max(1, round(height * 0.58))
+        bottom = max(top + 1, min(height - 1, round(height * 0.90)))
+        sample_height = max(1, bottom - top)
+        usable_width = max(1, right - left)
+
+        life_score = 0.0
+        mana_score = 0.0
+        pixels = []
+        for x in range(left, right):
+            green_score = 0.0
+            blue_score = 0.0
+            for y in range(top, bottom):
+                red, green, blue = rgb.getpixel((x, y))
+                green_score += max(0, green - max(red, blue))
+                blue_score += max(0, blue - max(red, green))
+            green_score /= sample_height
+            blue_score /= sample_height
+            pixels.append((green_score, blue_score))
+            life_score += green_score
+            mana_score += blue_score
+
+        if not pixels:
+            return None
+
+        bar_kind = "life" if life_score >= mana_score else "mana"
+        dominance_values = [green if bar_kind == "life" else blue for green, blue in pixels]
+        baseline = sorted(dominance_values)[len(dominance_values) // 3]
+        threshold = max(12.0, baseline + 12.0)
+
+        started = False
+        last_filled = -1
+        gap_run = 0
+        for index, value in enumerate(dominance_values):
+            filled = value >= threshold
+            if filled:
+                started = True
+                last_filled = index
+                gap_run = 0
+                continue
+            if started:
+                gap_run += 1
+                if gap_run >= 6:
+                    break
+
+        if last_filled < 0:
+            return None
+
+        fill_ratio = (last_filled + 1) / usable_width
+        return max(0.0, min(1.0, fill_ratio))
 
     @staticmethod
     def _normalize(text: str) -> str:
