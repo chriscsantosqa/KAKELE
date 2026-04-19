@@ -12,7 +12,11 @@ from kakelebot.core.config import ProfileSettings, save_profile
 from kakelebot.core.global_hotkeys import GlobalHotkeyService
 from kakelebot.core.profile_manager import ProfileManager
 from kakelebot.core.session import SessionController, SessionPreviewResult, SessionRunResult, SessionState
-from kakelebot.ui.ai_analysis_history import save_ai_analysis_result
+from kakelebot.ui.ai_analysis_history import (
+    build_ai_analysis_comparison,
+    load_latest_ai_analysis,
+    save_ai_analysis_result,
+)
 from kakelebot.ui.ai_analysis_panel import AIAnalysisPanel
 from kakelebot.ui.diagnostics_panel import DiagnosticsPanel
 from kakelebot.ui.preview_panel import PreviewPanel
@@ -186,6 +190,8 @@ class MainWindow:
         self._ai_actions_var = tk.StringVar(value="ai recommended actions: -")
         self._ai_detections_var = tk.StringVar(value="ai detected elements: -")
         self._ai_suggested_rois_var = tk.StringVar(value="ai suggested rois: -")
+        self._ai_comparison_var = tk.StringVar(value="ai comparison: -")
+        self._ai_assessment_var = tk.StringVar(value="ai assessment: -")
 
         self._snapshot_review_status_var = tk.StringVar(value="latest snapshot: -")
         self._snapshot_review_resolution_var = tk.StringVar(value="snapshot resolution: -")
@@ -380,6 +386,8 @@ class MainWindow:
             actions_var=self._ai_actions_var,
             detections_var=self._ai_detections_var,
             suggested_rois_var=self._ai_suggested_rois_var,
+            comparison_var=self._ai_comparison_var,
+            assessment_var=self._ai_assessment_var,
         )
 
     def _build_snapshot_review(self, parent: ttk.Frame) -> None:
@@ -542,13 +550,6 @@ class MainWindow:
         else:
             self._on_start()
 
-    def _handle_pauseResume_hotkey(self) -> None:
-        state = self._session_controller.status.state
-        if state == SessionState.RUNNING:
-            self._on_pause()
-        elif state == SessionState.PAUSED:
-            self._on_resume()
-
     def _handle_pause_resume_hotkey(self) -> None:
         state = self._session_controller.status.state
         if state == SessionState.RUNNING:
@@ -604,9 +605,10 @@ class MainWindow:
             return
         try:
             analysis_profile = self._build_preview_profile_from_form()
+            previous_analysis = load_latest_ai_analysis(self._ai_analysis_root_dir())
             self._append_output("Running AI visual analysis...\n")
             result = self._session_controller.analyze_visual_state(analysis_profile)
-            self._apply_ai_analysis_result(result)
+            self._apply_ai_analysis_result(result, previous_analysis)
             persisted_path = self._persist_ai_analysis_result(result)
             self._append_output(self._format_ai_analysis_result(result))
             self._append_output(f"AI visual analysis saved to {persisted_path}.\n")
@@ -622,7 +624,7 @@ class MainWindow:
         except (ValueError, OSError) as error:
             self._append_output(f"AI visual analysis failed: {error}\n")
 
-    def _apply_ai_analysis_result(self, result) -> None:
+    def _apply_ai_analysis_result(self, result, previous_analysis: dict | None = None) -> None:
         self._ai_summary_var.set(f"ai summary: {result.summary}")
         self._ai_screen_state_var.set(f"ai screen state: {result.screen_state}")
         self._ai_readiness_var.set(f"ai can start session: {result.can_start_session}")
@@ -650,6 +652,10 @@ class MainWindow:
             self._ai_suggested_rois_var.set("ai suggested rois: " + " | ".join(roi_parts))
         else:
             self._ai_suggested_rois_var.set("ai suggested rois: none")
+
+        comparison_summary, assessment = build_ai_analysis_comparison(previous_analysis, result)
+        self._ai_comparison_var.set("ai comparison: " + comparison_summary)
+        self._ai_assessment_var.set("ai assessment: " + assessment)
 
         if result.error_message:
             self._ai_issues_var.set(f"ai issues: {result.error_message}")
