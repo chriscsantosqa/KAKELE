@@ -30,6 +30,8 @@ class HealingCycleResult:
 
 
 class HealingRuntime:
+    _MULTI_ACTION_DELAY_SECONDS = 0.0
+
     def __init__(
         self,
         capture_service: CaptureService,
@@ -108,51 +110,23 @@ class HealingRuntime:
         target_reason = "not-evaluated"
         target_text = ""
 
-        urgent_sustain = False
+        immediate_actions: list[KeyAction] = []
+        now = self._time_provider()
+        life_critical = self._life_is_critical(life_reading, life_threshold_percent)
 
         if decision.should_heal_life:
-            urgent_sustain = True
             if self._can_execute_life(life_cooldown_seconds):
-                action = KeyAction(key=life_hotkey, reason=decision.reason)
-                self._input.execute(action)
-                executed_actions.append(action)
-                self._last_life_action_at = self._time_provider()
+                immediate_actions.append(KeyAction(key=life_hotkey, reason=decision.reason))
+                self._last_life_action_at = now
             else:
                 suppressed_actions.append("life-cooldown")
 
         if decision.should_heal_mana:
-            urgent_sustain = True
             if self._can_execute_mana(mana_cooldown_seconds):
-                action = KeyAction(key=mana_hotkey, reason=decision.reason)
-                self._input.execute(action)
-                executed_actions.append(action)
-                self._last_mana_action_at = self._time_provider()
+                immediate_actions.append(KeyAction(key=mana_hotkey, reason=decision.reason))
+                self._last_mana_action_at = now
             else:
                 suppressed_actions.append("mana-cooldown")
-
-        if urgent_sustain:
-            suppressed_actions.append("combat-deprioritized-due-healing")
-            if haste_enabled:
-                haste_status = "deprioritized-due-healing"
-            if attack_enabled:
-                attack_status = "deprioritized-due-healing"
-            if secondary_attack_enabled:
-                secondary_attack_status = "deprioritized-due-healing"
-            return HealingCycleResult(
-                life_reading=life_reading,
-                mana_reading=mana_reading,
-                decision=decision,
-                actions_executed=tuple(executed_actions),
-                suppressed_actions=tuple(suppressed_actions),
-                haste_status=haste_status,
-                attack_status=attack_status,
-                secondary_attack_status=secondary_attack_status,
-                has_target=has_target,
-                target_confirmed=target_confirmed,
-                target_oscillating=target_oscillating,
-                target_reason="healing-priority",
-                target_text=target_text,
-            )
 
         target_image = self._crop_from_window_buffer(window, whole_window_image, snapshot.target_status)
         target_preview = self._vision.build_target_preview(target_image)
@@ -166,38 +140,69 @@ class HealingRuntime:
             max_target_text_variants=max_target_text_variants,
         )
 
-        attack_status = self._try_execute_attack(
-            attack_hotkey=attack_hotkey,
-            attack_enabled=attack_enabled,
-            attack_cooldown_seconds=attack_cooldown_seconds,
-            has_target=has_target,
-            target_confirmed=target_confirmed,
-            target_oscillating=target_oscillating,
-            executed_actions=executed_actions,
-            suppressed_actions=suppressed_actions,
-        )
+        if life_critical:
+            suppressed_actions.append("combat-deprioritized-due-critical-life")
+            if haste_enabled:
+                haste_status = "deprioritized-due-critical-life"
+            if attack_enabled:
+                attack_status = "deprioritized-due-critical-life"
+            if secondary_attack_enabled:
+                secondary_attack_status = "deprioritized-due-critical-life"
+            if immediate_actions:
+                self._input.execute_many(immediate_actions, self._MULTI_ACTION_DELAY_SECONDS)
+                executed_actions.extend(immediate_actions)
+            return HealingCycleResult(
+                life_reading=life_reading,
+                mana_reading=mana_reading,
+                decision=decision,
+                actions_executed=tuple(executed_actions),
+                suppressed_actions=tuple(suppressed_actions),
+                haste_status=haste_status,
+                attack_status=attack_status,
+                secondary_attack_status=secondary_attack_status,
+                has_target=has_target,
+                target_confirmed=target_confirmed,
+                target_oscillating=target_oscillating,
+                target_reason="critical-life-priority",
+                target_text=target_text,
+            )
 
-        secondary_attack_status = self._try_execute_secondary_attack(
-            secondary_attack_hotkey=secondary_attack_hotkey,
-            secondary_attack_enabled=secondary_attack_enabled,
-            secondary_attack_cooldown_seconds=secondary_attack_cooldown_seconds,
-            secondary_attack_after_primary_only=secondary_attack_after_primary_only,
-            secondary_attack_combo_window_seconds=secondary_attack_combo_window_seconds,
-            has_target=has_target,
-            target_confirmed=target_confirmed,
-            target_oscillating=target_oscillating,
-            primary_attack_status=attack_status,
-            executed_actions=executed_actions,
-            suppressed_actions=suppressed_actions,
-        )
+        if attack_enabled:
+            attack_status = self._queue_attack(
+                attack_hotkey=attack_hotkey,
+                attack_cooldown_seconds=attack_cooldown_seconds,
+                has_target=has_target,
+                target_confirmed=target_confirmed,
+                target_oscillating=target_oscillating,
+                queued_actions=immediate_actions,
+                suppressed_actions=suppressed_actions,
+            )
 
-        haste_status = self._try_execute_haste(
-            haste_hotkey=haste_hotkey,
-            haste_enabled=haste_enabled,
-            haste_interval_seconds=haste_interval_seconds,
-            haste_cooldown_seconds=haste_cooldown_seconds,
-            executed_actions=executed_actions,
-        )
+        if secondary_attack_enabled:
+            secondary_attack_status = self._queue_secondary_attack(
+                secondary_attack_hotkey=secondary_attack_hotkey,
+                secondary_attack_cooldown_seconds=secondary_attack_cooldown_seconds,
+                secondary_attack_after_primary_only=secondary_attack_after_primary_only,
+                secondary_attack_combo_window_seconds=secondary_attack_combo_window_seconds,
+                has_target=has_target,
+                target_confirmed=target_confirmed,
+                target_oscillating=target_oscillating,
+                primary_attack_status=attack_status,
+                queued_actions=immediate_actions,
+                suppressed_actions=suppressed_actions,
+            )
+
+        if haste_enabled:
+            haste_status = self._queue_haste(
+                haste_hotkey=haste_hotkey,
+                haste_interval_seconds=haste_interval_seconds,
+                haste_cooldown_seconds=haste_cooldown_seconds,
+                queued_actions=immediate_actions,
+            )
+
+        if immediate_actions:
+            self._input.execute_many(immediate_actions, self._MULTI_ACTION_DELAY_SECONDS)
+            executed_actions.extend(immediate_actions)
 
         return HealingCycleResult(
             life_reading=life_reading,
@@ -249,6 +254,13 @@ class HealingRuntime:
             (relative_left, relative_top, relative_right, relative_bottom)
         )
 
+    @staticmethod
+    def _life_is_critical(life_reading: BarReading | None, threshold_percent: int) -> bool:
+        if life_reading is None:
+            return False
+        critical_threshold = max(18.0, threshold_percent * 0.55)
+        return life_reading.percentage <= critical_threshold
+
     def _record_target_observation(self, has_target: bool, normalized_text: str) -> None:
         signal = normalized_text.strip().lower() or "<empty>"
         self._recent_target_observations.append((has_target, signal))
@@ -278,19 +290,16 @@ class HealingRuntime:
         }
         return state_flips >= 2 or len(text_variants) > max_target_text_variants
 
-    def _try_execute_attack(
+    def _queue_attack(
         self,
         attack_hotkey: str,
-        attack_enabled: bool,
         attack_cooldown_seconds: float,
         has_target: bool,
         target_confirmed: bool,
         target_oscillating: bool,
-        executed_actions: list[KeyAction],
+        queued_actions: list[KeyAction],
         suppressed_actions: list[str],
     ) -> str:
-        if not attack_enabled:
-            return "disabled"
         if not has_target:
             suppressed_actions.append("attack-no-target")
             return "no-target"
@@ -304,18 +313,15 @@ class HealingRuntime:
             suppressed_actions.append("attack-cooldown")
             return "cooldown"
 
-        action = KeyAction(key=attack_hotkey, reason="target-confirmed")
-        self._input.execute(action)
-        executed_actions.append(action)
+        queued_actions.append(KeyAction(key=attack_hotkey, reason="target-confirmed"))
         now = self._time_provider()
         self._last_attack_action_at = now
         self._last_primary_attack_at = now
         return "executed"
 
-    def _try_execute_secondary_attack(
+    def _queue_secondary_attack(
         self,
         secondary_attack_hotkey: str,
-        secondary_attack_enabled: bool,
         secondary_attack_cooldown_seconds: float,
         secondary_attack_after_primary_only: bool,
         secondary_attack_combo_window_seconds: float,
@@ -323,11 +329,9 @@ class HealingRuntime:
         target_confirmed: bool,
         target_oscillating: bool,
         primary_attack_status: str,
-        executed_actions: list[KeyAction],
+        queued_actions: list[KeyAction],
         suppressed_actions: list[str],
     ) -> str:
-        if not secondary_attack_enabled:
-            return "disabled"
         if not has_target:
             suppressed_actions.append("secondary-no-target")
             return "no-target"
@@ -347,9 +351,7 @@ class HealingRuntime:
             suppressed_actions.append("secondary-cooldown")
             return "cooldown"
 
-        action = KeyAction(key=secondary_attack_hotkey, reason="combo-follow-up")
-        self._input.execute(action)
-        executed_actions.append(action)
+        queued_actions.append(KeyAction(key=secondary_attack_hotkey, reason="combo-follow-up"))
         self._last_secondary_attack_action_at = self._time_provider()
         return "executed"
 
@@ -360,26 +362,18 @@ class HealingRuntime:
             return False
         return (self._time_provider() - self._last_primary_attack_at) <= combo_window_seconds
 
-    def _try_execute_haste(
+    def _queue_haste(
         self,
         haste_hotkey: str,
-        haste_enabled: bool,
         haste_interval_seconds: float,
         haste_cooldown_seconds: float,
-        executed_actions: list[KeyAction],
+        queued_actions: list[KeyAction],
     ) -> str:
-        if not haste_enabled:
-            return "disabled"
-
         if not self._haste_due(haste_interval_seconds):
             return "not-due"
-
         if not self._can_execute_haste(haste_cooldown_seconds):
             return "cooldown"
-
-        action = KeyAction(key=haste_hotkey, reason="haste-interval-elapsed")
-        self._input.execute(action)
-        executed_actions.append(action)
+        queued_actions.append(KeyAction(key=haste_hotkey, reason="haste-interval-elapsed"))
         self._last_haste_action_at = self._time_provider()
         return "executed"
 
