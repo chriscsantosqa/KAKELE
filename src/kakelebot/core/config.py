@@ -77,6 +77,24 @@ class HealingLoopSettings:
 
 
 @dataclass(slots=True)
+class HuntWaypoint:
+    direction: str
+    repeats: int = 1
+
+
+@dataclass(slots=True)
+class HuntSettings:
+    enabled: bool = False
+    loop_route: bool = True
+    waypoint_interval_seconds: float = 0.20
+    move_up_hotkey: str = "UP"
+    move_down_hotkey: str = "DOWN"
+    move_left_hotkey: str = "LEFT"
+    move_right_hotkey: str = "RIGHT"
+    waypoints: list[HuntWaypoint] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class NormalizedRegionSettings:
     left_ratio: float
     top_ratio: float
@@ -111,6 +129,7 @@ class ProfileSettings:
     buffs: BuffSettings = field(default_factory=BuffSettings)
     combat: CombatSettings = field(default_factory=CombatSettings)
     healing_loop: HealingLoopSettings = field(default_factory=HealingLoopSettings)
+    hunt: HuntSettings = field(default_factory=HuntSettings)
     rois: RoiSettings = field(default_factory=RoiSettings)
 
 
@@ -292,6 +311,37 @@ def _load_healing_loop(raw: dict) -> HealingLoopSettings:
     )
 
 
+def _load_hunt(raw: dict) -> HuntSettings:
+    defaults = HuntSettings()
+    raw_waypoints = raw.get("waypoints") or []
+    waypoints: list[HuntWaypoint] = []
+    if isinstance(raw_waypoints, list):
+        for item in raw_waypoints:
+            if not isinstance(item, dict):
+                continue
+            direction = _coerce_str(item.get("direction"), "")
+            if direction not in {"UP", "DOWN", "LEFT", "RIGHT"}:
+                continue
+            waypoints.append(
+                HuntWaypoint(
+                    direction=direction,
+                    repeats=max(1, _coerce_int(item.get("repeats"), 1)),
+                )
+            )
+    return HuntSettings(
+        enabled=_coerce_bool(raw.get("enabled"), defaults.enabled),
+        loop_route=_coerce_bool(raw.get("loop_route"), defaults.loop_route),
+        waypoint_interval_seconds=_coerce_float(
+            raw.get("waypoint_interval_seconds"), defaults.waypoint_interval_seconds
+        ),
+        move_up_hotkey=_coerce_str(raw.get("move_up_hotkey"), defaults.move_up_hotkey),
+        move_down_hotkey=_coerce_str(raw.get("move_down_hotkey"), defaults.move_down_hotkey),
+        move_left_hotkey=_coerce_str(raw.get("move_left_hotkey"), defaults.move_left_hotkey),
+        move_right_hotkey=_coerce_str(raw.get("move_right_hotkey"), defaults.move_right_hotkey),
+        waypoints=waypoints,
+    )
+
+
 def load_profile(path: Path) -> ProfileSettings:
     if not path.exists():
         profile = ProfileSettings()
@@ -304,6 +354,7 @@ def load_profile(path: Path) -> ProfileSettings:
     buffs = _load_buffs(raw.get("buffs", {}))
     combat = _load_combat(raw.get("combat", {}))
     healing_loop = _load_healing_loop(raw.get("healing_loop", {}))
+    hunt = _load_hunt(raw.get("hunt", {}))
     rois = _load_rois(raw.get("rois", {}))
 
     return ProfileSettings(
@@ -316,5 +367,6 @@ def load_profile(path: Path) -> ProfileSettings:
         buffs=buffs,
         combat=combat,
         healing_loop=healing_loop,
+        hunt=hunt,
         rois=rois,
     )
