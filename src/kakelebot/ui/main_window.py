@@ -12,6 +12,7 @@ from kakelebot.core.config import ProfileSettings, save_profile
 from kakelebot.core.global_hotkeys import GlobalHotkeyService
 from kakelebot.core.profile_manager import ProfileManager
 from kakelebot.core.session import SessionController, SessionPreviewResult, SessionRunResult, SessionState
+from kakelebot.ui.ai_analysis_panel import AIAnalysisPanel
 from kakelebot.ui.diagnostics_panel import DiagnosticsPanel
 from kakelebot.ui.preview_panel import PreviewPanel
 from kakelebot.ui.profile_config_panel import ProfileConfigPanel
@@ -55,6 +56,7 @@ class MainWindow:
         self._preview_panel: PreviewPanel | None = None
         self._profiles_panel: ProfilesPanel | None = None
         self._snapshot_panel: SnapshotPanel | None = None
+        self._ai_analysis_panel: AIAnalysisPanel | None = None
 
         preset_values = self._preset_display_values()
 
@@ -175,6 +177,14 @@ class MainWindow:
         self._ocr_life_reading_var = tk.StringVar(value="life reading: -")
         self._ocr_mana_reading_var = tk.StringVar(value="mana reading: -")
 
+        self._ai_summary_var = tk.StringVar(value="ai summary: -")
+        self._ai_screen_state_var = tk.StringVar(value="ai screen state: -")
+        self._ai_readiness_var = tk.StringVar(value="ai can start session: -")
+        self._ai_issues_var = tk.StringVar(value="ai issues: -")
+        self._ai_actions_var = tk.StringVar(value="ai recommended actions: -")
+        self._ai_detections_var = tk.StringVar(value="ai detected elements: -")
+        self._ai_suggested_rois_var = tk.StringVar(value="ai suggested rois: -")
+
         self._snapshot_review_status_var = tk.StringVar(value="latest snapshot: -")
         self._snapshot_review_resolution_var = tk.StringVar(value="snapshot resolution: -")
         self._snapshot_review_ocr_var = tk.StringVar(value="snapshot OCR: -")
@@ -225,6 +235,7 @@ class MainWindow:
 
         self._build_diagnostics(right_panel)
         self._build_preview_panel(right_panel)
+        self._build_ai_analysis_panel(right_panel)
         self._build_snapshot_review(right_panel)
         self._build_output(right_panel)
 
@@ -355,6 +366,18 @@ class MainWindow:
             target_ocr_var=self._preview_target_text_var,
             life_reading_var=self._ocr_life_reading_var,
             mana_reading_var=self._ocr_mana_reading_var,
+        )
+
+    def _build_ai_analysis_panel(self, parent: ttk.Frame) -> None:
+        self._ai_analysis_panel = AIAnalysisPanel(
+            parent=parent,
+            summary_var=self._ai_summary_var,
+            screen_state_var=self._ai_screen_state_var,
+            readiness_var=self._ai_readiness_var,
+            issues_var=self._ai_issues_var,
+            actions_var=self._ai_actions_var,
+            detections_var=self._ai_detections_var,
+            suggested_rois_var=self._ai_suggested_rois_var,
         )
 
     def _build_snapshot_review(self, parent: ttk.Frame) -> None:
@@ -574,6 +597,7 @@ class MainWindow:
             analysis_profile = self._build_preview_profile_from_form()
             self._append_output("Running AI visual analysis...\n")
             result = self._session_controller.analyze_visual_state(analysis_profile)
+            self._apply_ai_analysis_result(result)
             self._append_output(self._format_ai_analysis_result(result))
             if result.error_message:
                 return
@@ -586,6 +610,38 @@ class MainWindow:
                 self._on_refresh_preview()
         except ValueError as error:
             self._append_output(f"AI visual analysis failed: {error}\n")
+
+    def _apply_ai_analysis_result(self, result) -> None:
+        self._ai_summary_var.set(f"ai summary: {result.summary}")
+        self._ai_screen_state_var.set(f"ai screen state: {result.screen_state}")
+        self._ai_readiness_var.set(f"ai can start session: {result.can_start_session}")
+        self._ai_issues_var.set(
+            "ai issues: " + (" | ".join(result.issues) if result.issues else "none")
+        )
+        self._ai_actions_var.set(
+            "ai recommended actions: "
+            + (" | ".join(result.recommended_actions) if result.recommended_actions else "none")
+        )
+        if result.detected_elements:
+            parts = [
+                f"{key}={value.detected} ({value.confidence})"
+                for key, value in result.detected_elements.items()
+            ]
+            self._ai_detections_var.set("ai detected elements: " + " | ".join(parts))
+        else:
+            self._ai_detections_var.set("ai detected elements: none")
+
+        if result.suggested_rois:
+            roi_parts = [
+                f"{key}: left={value.left_ratio:.4f} top={value.top_ratio:.4f} width={value.width_ratio:.4f} height={value.height_ratio:.4f}"
+                for key, value in result.suggested_rois.items()
+            ]
+            self._ai_suggested_rois_var.set("ai suggested rois: " + " | ".join(roi_parts))
+        else:
+            self._ai_suggested_rois_var.set("ai suggested rois: none")
+
+        if result.error_message:
+            self._ai_issues_var.set(f"ai issues: {result.error_message}")
 
     def _apply_ai_roi_suggestions(self, suggested_rois: dict) -> None:
         mapping = {
