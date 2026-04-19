@@ -12,6 +12,7 @@ from kakelebot.core.config import ProfileSettings, save_profile
 from kakelebot.core.global_hotkeys import GlobalHotkeyService
 from kakelebot.core.profile_manager import ProfileManager
 from kakelebot.core.session import SessionController, SessionPreviewResult, SessionRunResult, SessionState
+from kakelebot.ui.snapshot_panel import SnapshotPanel
 
 
 class MainWindow:
@@ -37,6 +38,7 @@ class MainWindow:
         self._mana_preview_image = None
         self._life_processed_preview_image = None
         self._mana_processed_preview_image = None
+        self._snapshot_panel: SnapshotPanel | None = None
 
         preset_values = self._preset_display_values()
 
@@ -581,52 +583,24 @@ class MainWindow:
         images.columnconfigure(1, weight=1)
 
     def _build_snapshot_review(self, parent: ttk.Frame) -> None:
-        review = ttk.LabelFrame(parent, text="Calibration snapshots", padding=12)
-        review.pack(fill=tk.X, pady=(0, 12))
-
-        ttk.Label(review, textvariable=self._snapshot_review_status_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W)
-        ttk.Label(review, textvariable=self._snapshot_review_resolution_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 0))
-        ttk.Label(review, textvariable=self._snapshot_review_ocr_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 0))
-        ttk.Label(review, textvariable=self._snapshot_review_changes_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 0))
-        ttk.Label(review, textvariable=self._snapshot_review_assessment_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 8))
-
-        latest_actions = ttk.Frame(review)
-        latest_actions.pack(fill=tk.X)
-        ttk.Button(latest_actions, text="Refresh latest snapshot review", command=self._on_refresh_latest_snapshot_review).pack(side=tk.LEFT)
-        ttk.Button(latest_actions, text="Load latest snapshot into form", command=self._on_load_latest_snapshot_context).pack(side=tk.LEFT, padx=(8, 0))
-
-        ttk.Separator(review, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(12, 12))
-
-        selectors = ttk.Frame(review)
-        selectors.pack(fill=tk.X)
-        ttk.Label(selectors, text="Snapshot A").grid(row=0, column=0, sticky=tk.W)
-        self._snapshot_history_primary_selector = ttk.Combobox(
-            selectors,
-            textvariable=self._snapshot_history_primary_var,
-            state="readonly",
-            width=28,
+        self._snapshot_panel = SnapshotPanel(
+            parent=parent,
+            latest_status_var=self._snapshot_review_status_var,
+            latest_resolution_var=self._snapshot_review_resolution_var,
+            latest_ocr_var=self._snapshot_review_ocr_var,
+            latest_changes_var=self._snapshot_review_changes_var,
+            latest_assessment_var=self._snapshot_review_assessment_var,
+            history_primary_var=self._snapshot_history_primary_var,
+            history_secondary_var=self._snapshot_history_secondary_var,
+            history_selection_var=self._snapshot_history_selection_var,
+            history_compare_var=self._snapshot_history_compare_var,
+            history_assessment_var=self._snapshot_history_assessment_var,
+            on_refresh_latest=self._on_refresh_latest_snapshot_review,
+            on_load_latest=self._on_load_latest_snapshot_context,
+            on_refresh_history=self._on_refresh_snapshot_history,
+            on_load_history_primary=self._on_load_selected_snapshot_context,
+            on_compare_history=self._on_compare_selected_snapshots,
         )
-        self._snapshot_history_primary_selector.grid(row=0, column=1, sticky=tk.EW, padx=(10, 20))
-        ttk.Label(selectors, text="Snapshot B").grid(row=0, column=2, sticky=tk.W)
-        self._snapshot_history_secondary_selector = ttk.Combobox(
-            selectors,
-            textvariable=self._snapshot_history_secondary_var,
-            state="readonly",
-            width=28,
-        )
-        self._snapshot_history_secondary_selector.grid(row=0, column=3, sticky=tk.EW, padx=(10, 0))
-        selectors.columnconfigure(1, weight=1)
-        selectors.columnconfigure(3, weight=1)
-
-        history_actions = ttk.Frame(review)
-        history_actions.pack(fill=tk.X, pady=(8, 0))
-        ttk.Button(history_actions, text="Refresh snapshot list", command=self._on_refresh_snapshot_history).pack(side=tk.LEFT)
-        ttk.Button(history_actions, text="Load snapshot A into form", command=self._on_load_selected_snapshot_context).pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(history_actions, text="Compare A vs B", command=self._on_compare_selected_snapshots).pack(side=tk.LEFT, padx=(8, 0))
-
-        ttk.Label(review, textvariable=self._snapshot_history_selection_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W, pady=(8, 0))
-        ttk.Label(review, textvariable=self._snapshot_history_compare_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 0))
-        ttk.Label(review, textvariable=self._snapshot_history_assessment_var, wraplength=860, justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 0))
 
     def _build_output(self, parent: ttk.Frame) -> None:
         self._output = tk.Text(parent, height=16, wrap=tk.WORD)
@@ -1164,9 +1138,8 @@ class MainWindow:
 
     def _refresh_snapshot_history_controls(self) -> None:
         snapshot_names = self._list_snapshot_names()
-        if hasattr(self, "_snapshot_history_primary_selector"):
-            self._snapshot_history_primary_selector["values"] = snapshot_names
-            self._snapshot_history_secondary_selector["values"] = snapshot_names
+        if self._snapshot_panel is not None:
+            self._snapshot_panel.set_snapshot_names(snapshot_names)
 
         if not snapshot_names:
             self._snapshot_history_primary_var.set("")
