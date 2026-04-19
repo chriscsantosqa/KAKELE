@@ -11,6 +11,9 @@ class WindowAdapter(Protocol):
     def find_window(self, title: str) -> "WindowInfo | None":
         ...
 
+    def activate_window(self, window: "WindowInfo") -> None:
+        ...
+
 
 @dataclass(frozen=True, slots=True)
 class WindowInfo:
@@ -20,6 +23,8 @@ class WindowInfo:
     width: int
     height: int
     is_active: bool
+    hwnd: int | None = None
+    process_name: str | None = None
 
     @property
     def right(self) -> int:
@@ -46,3 +51,8 @@ class WindowService:
                 f"Game window '{self._window_title}' was not found."
             )
         return window
+
+    def activate_game_window(self, window: WindowInfo | None = None) -> WindowInfo:
+        resolved_window = window or self.get_game_window()
+        self._adapter.activate_window(resolved_window)
+        return self.get_game_window()
