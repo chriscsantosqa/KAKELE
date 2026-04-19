@@ -109,9 +109,9 @@ class SessionController:
             self._last_result = None
 
         try:
-            window = self._window_service.get_game_window()
+            window = self._window_service.activate_game_window()
             whole_window_region = self._capture_service.whole_window_region(window)
-            self._capture_service.capture(whole_window_region)
+            self._capture_service.capture_window(window)
 
             self._calibration_service.update_profile_resolution(profile, window)
             self._calibration_service.save_profile(profile_path, profile)
@@ -182,11 +182,12 @@ class SessionController:
     def capture_preview(self, profile: ProfileSettings) -> SessionPreviewResult:
         try:
             window = self._window_service.get_game_window()
+            whole_window_image = self._capture_service.capture_window(window)
             calibration_snapshot = self._calibration_service.build_snapshot(window, profile)
             resolution_validation = self._calibration_service.validate_window_resolution(profile, window)
-            life_image = self._capture_service.capture(calibration_snapshot.life_bar)
-            mana_image = self._capture_service.capture(calibration_snapshot.mana_bar)
-            target_image = self._capture_service.capture(calibration_snapshot.target_status)
+            life_image = self._crop_window_image(window, whole_window_image, calibration_snapshot.life_bar)
+            mana_image = self._crop_window_image(window, whole_window_image, calibration_snapshot.mana_bar)
+            target_image = self._crop_window_image(window, whole_window_image, calibration_snapshot.target_status)
             life_preview = self._vision_service.build_preview(life_image)
             mana_preview = self._vision_service.build_preview(mana_image)
             target_preview = self._vision_service.build_target_preview(target_image)
@@ -221,13 +222,13 @@ class SessionController:
         try:
             window = self._window_service.get_game_window()
             whole_window_region = self._capture_service.whole_window_region(window)
-            whole_window_image = self._capture_service.capture(whole_window_region)
+            whole_window_image = self._capture_service.capture_window(window)
             calibration_snapshot = self._calibration_service.build_snapshot(window, profile)
             resolution_validation = self._calibration_service.validate_window_resolution(profile, window)
 
-            life_image = self._capture_service.capture(calibration_snapshot.life_bar)
-            mana_image = self._capture_service.capture(calibration_snapshot.mana_bar)
-            target_image = self._capture_service.capture(calibration_snapshot.target_status)
+            life_image = self._crop_window_image(window, whole_window_image, calibration_snapshot.life_bar)
+            mana_image = self._crop_window_image(window, whole_window_image, calibration_snapshot.mana_bar)
+            target_image = self._crop_window_image(window, whole_window_image, calibration_snapshot.target_status)
             life_preview = self._vision_service.build_preview(life_image)
             mana_preview = self._vision_service.build_preview(mana_image)
             target_preview = self._vision_service.build_target_preview(target_image)
@@ -254,6 +255,16 @@ class SessionController:
             return self._ai_vision_assistant.analyze(request)
         except (WindowDiscoveryError, RuntimeError) as error:
             return build_error_analysis(str(error))
+
+    @staticmethod
+    def _crop_window_image(window: WindowInfo, whole_window_image, region: ScreenRegion):
+        relative_left = max(0, region.left - window.left)
+        relative_top = max(0, region.top - window.top)
+        relative_right = min(window.width, relative_left + region.width)
+        relative_bottom = min(window.height, relative_top + region.height)
+        return whole_window_image.crop(
+            (relative_left, relative_top, relative_right, relative_bottom)
+        )
 
     def _should_continue(self) -> bool:
         with self._lock:
