@@ -14,6 +14,8 @@ class AIAnalysisPanel:
         actions_var,
         detections_var,
         suggested_rois_var,
+        comparison_var,
+        assessment_var,
     ):
         frame = ttk.LabelFrame(parent, text="AI Analysis", padding=12)
         frame.pack(fill="x", pady=(0, 12))
@@ -27,6 +29,8 @@ class AIAnalysisPanel:
             actions_var,
             detections_var,
             suggested_rois_var,
+            comparison_var,
+            assessment_var,
         ):
             ttk.Label(
                 frame,
