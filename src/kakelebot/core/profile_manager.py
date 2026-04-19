@@ -163,8 +163,10 @@ class ProfileManager:
     @classmethod
     def _apply_resolution_context(cls, profile: ProfileSettings, preset_key: str) -> None:
         preset = cls._preset_by_key(preset_key)
-        profile.resolution_width = preset.expected_width
-        profile.resolution_height = preset.expected_height
+        if profile.resolution_width <= 0:
+            profile.resolution_width = preset.expected_width
+        if profile.resolution_height <= 0:
+            profile.resolution_height = preset.expected_height
         profile.ui_scale = preset.ui_scale
 
     @classmethod
