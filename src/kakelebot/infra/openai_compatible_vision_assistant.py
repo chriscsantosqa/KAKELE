@@ -36,7 +36,7 @@ class OpenAICompatibleVisionAssistant(VisionAssistant):
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
-        raw_response = None
+        raw_response: str | None = None
 
         try:
             http_request = urllib.request.Request(
@@ -45,7 +45,10 @@ class OpenAICompatibleVisionAssistant(VisionAssistant):
                 headers=headers,
                 method="POST",
             )
-            with urllib.request.urlopen(http_request, timeout=self._settings.timeout_seconds) as response:
+            with urllib.request.urlopen(
+                http_request,
+                timeout=self._settings.timeout_seconds,
+            ) as response:
                 raw_response = response.read().decode("utf-8")
         except urllib.error.HTTPError as error:
             detail = error.read().decode("utf-8", errors="replace")
@@ -54,6 +57,9 @@ class OpenAICompatibleVisionAssistant(VisionAssistant):
             return build_error_analysis(f"AI connection error: {error.reason}")
         except TimeoutError:
             return build_error_analysis("AI request timed out.")
+
+        if raw_response is None or not raw_response.strip():
+            return build_error_analysis("AI provider returned an empty response.")
 
         try:
             response_json = json.loads(raw_response)
@@ -64,7 +70,11 @@ class OpenAICompatibleVisionAssistant(VisionAssistant):
             return build_error_analysis(f"AI response parsing failed: {error}")
 
     def _build_endpoint_url(self) -> str:
-        return self._settings.base_url.rstrip("/") + "/" + self._settings.endpoint_path.strip("/")
+        return (
+            self._settings.base_url.rstrip("/")
+            + "/"
+            + self._settings.endpoint_path.strip("/")
+        )
 
     def _build_payload(self, request: AIVisionRequest) -> dict:
         return {
@@ -108,33 +118,39 @@ class OpenAICompatibleVisionAssistant(VisionAssistant):
             if image is None:
                 continue
             content.append({"type": "text", "text": f"Image purpose: {name}"})
-            content.append({"type": "image_url", "image_url": {"url": self._image_to_data_url(image)}})
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": self._image_to_data_url(image)},
+                }
+            )
         return content
 
     @staticmethod
     def _system_prompt() -> str:
         return (
             "You are a visual calibration assistant for a desktop game automation tool. "
-            "Return only valid JSON. Do not wrap in markdown. "
+            "Return only valid JSON. Do not wrap the answer in markdown. "
             "Evaluate whether the health bar, mana bar and target area appear to be correctly selected. "
             "Provide conservative suggestions only. Never claim certainty when uncertain. "
-            "JSON schema: {"
-            "summary": string,"
-            "screen_state": string,"
-            "can_start_session": boolean,"
-            "issues": string[],"
-            "recommended_actions": string[],"
-            "detected_elements": {"
-            "life_bar": {"detected": boolean, "confidence": string, "rationale": string},"
-            "mana_bar": {"detected": boolean, "confidence": string, "rationale": string},"
-            "target_area": {"detected": boolean, "confidence": string, "rationale": string}"
-            "},"
-            "suggested_rois": {"
-            "life": {"left_ratio": number, "top_ratio": number, "width_ratio": number, "height_ratio": number},"
-            "mana": {"left_ratio": number, "top_ratio": number, "width_ratio": number, "height_ratio": number},"
-            "target": {"left_ratio": number, "top_ratio": number, "width_ratio": number, "height_ratio": number}"
-            "}"
-            "}"
+            "Use this JSON shape exactly: "
+            '{'
+            '"summary": "string", '
+            '"screen_state": "string", '
+            '"can_start_session": false, '
+            '"issues": ["string"], '
+            '"recommended_actions": ["string"], '
+            '"detected_elements": {'
+            '"life_bar": {"detected": false, "confidence": "low", "rationale": "string"}, '
+            '"mana_bar": {"detected": false, "confidence": "low", "rationale": "string"}, '
+            '"target_area": {"detected": false, "confidence": "low", "rationale": "string"}'
+            '}, '
+            '"suggested_rois": {'
+            '"life": {"left_ratio": 0.0, "top_ratio": 0.0, "width_ratio": 0.0, "height_ratio": 0.0}, '
+            '"mana": {"left_ratio": 0.0, "top_ratio": 0.0, "width_ratio": 0.0, "height_ratio": 0.0}, '
+            '"target": {"left_ratio": 0.0, "top_ratio": 0.0, "width_ratio": 0.0, "height_ratio": 0.0}'
+            '}'
+            '}'
         )
 
     @staticmethod
@@ -230,9 +246,15 @@ class OpenAICompatibleVisionAssistant(VisionAssistant):
             return None
         if not OpenAICompatibleVisionAssistant._valid_ratio(region.top_ratio):
             return None
-        if not OpenAICompatibleVisionAssistant._valid_ratio(region.width_ratio, allow_zero=False):
+        if not OpenAICompatibleVisionAssistant._valid_ratio(
+            region.width_ratio,
+            allow_zero=False,
+        ):
             return None
-        if not OpenAICompatibleVisionAssistant._valid_ratio(region.height_ratio, allow_zero=False):
+        if not OpenAICompatibleVisionAssistant._valid_ratio(
+            region.height_ratio,
+            allow_zero=False,
+        ):
             return None
         return region
 
