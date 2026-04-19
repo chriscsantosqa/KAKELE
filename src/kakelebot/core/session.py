@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from threading import RLock
 
+from kakelebot.core.ai_vision import AIVisionAnalysisResult, AIVisionRequest, VisionAssistant, build_error_analysis
 from kakelebot.core.calibration import (
     CalibrationService,
     CalibrationSnapshot,
@@ -62,12 +63,14 @@ class SessionController:
         calibration_service: CalibrationService,
         healing_loop: HealingLoopRunner,
         vision_service: VisionService,
+        ai_vision_assistant: VisionAssistant | None = None,
     ) -> None:
         self._window_service = window_service
         self._capture_service = capture_service
         self._calibration_service = calibration_service
         self._healing_loop = healing_loop
         self._vision_service = vision_service
+        self._ai_vision_assistant = ai_vision_assistant
         self._status = SessionStatus(SessionState.IDLE, "session initialized")
         self._last_result: SessionRunResult | None = None
         self._lock = RLock()
@@ -209,6 +212,48 @@ class SessionController:
                 target_preview=None,
                 error_message=str(error),
             )
+
+    def analyze_visual_state(self, profile: ProfileSettings) -> AIVisionAnalysisResult:
+        if self._ai_vision_assistant is None:
+            return build_error_analysis(
+                "AI vision assistant is disabled. Configure ai_vision in settings.json first."
+            )
+        try:
+            window = self._window_service.get_game_window()
+            whole_window_region = self._capture_service.whole_window_region(window)
+            whole_window_image = self._capture_service.capture(whole_window_region)
+            calibration_snapshot = self._calibration_service.build_snapshot(window, profile)
+            resolution_validation = self._calibration_service.validate_window_resolution(profile, window)
+
+            life_image = self._capture_service.capture(calibration_snapshot.life_bar)
+            mana_image = self._capture_service.capture(calibration_snapshot.mana_bar)
+            target_image = self._capture_service.capture(calibration_snapshot.target_status)
+            life_preview = self._vision_service.build_preview(life_image)
+            mana_preview = self._vision_service.build_preview(mana_image)
+            target_preview = self._vision_service.build_target_preview(target_image)
+
+            request = AIVisionRequest(
+                profile_name=profile.name,
+                resolution_width=profile.resolution_width,
+                resolution_height=profile.resolution_height,
+                ui_scale=profile.ui_scale,
+                window_title=window.title,
+                window_width=window.width,
+                window_height=window.height,
+                resolution_validation_message=(
+                    resolution_validation.message if resolution_validation is not None else "unavailable"
+                ),
+                whole_window_image=whole_window_image,
+                life_image=life_image,
+                mana_image=mana_image,
+                target_image=target_image,
+                life_ocr_text=life_preview.normalized_text,
+                mana_ocr_text=mana_preview.normalized_text,
+                target_ocr_text=target_preview.normalized_text,
+            )
+            return self._ai_vision_assistant.analyze(request)
+        except (WindowDiscoveryError, RuntimeError) as error:
+            return build_error_analysis(str(error))
 
     def _should_continue(self) -> bool:
         with self._lock:
