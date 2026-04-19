@@ -1,13 +1,24 @@
 from __future__ import annotations
 
+import ctypes
+from pathlib import Path
 from typing import Any
 
 from kakelebot.core.window import WindowInfo
 
 try:
+    import psutil
+except ImportError:  # pragma: no cover
+    psutil = None
+
+try:
     import pygetwindow as gw
 except ImportError:  # pragma: no cover
     gw = None
+
+
+_GAME_EXECUTABLE_NAMES = {"kakele.exe", "kakele"}
+_EXCLUDED_WINDOW_TITLES = {"kakelebot next"}
 
 
 class PyGetWindowAdapter:
@@ -19,12 +30,66 @@ class PyGetWindowAdapter:
         if not windows:
             return None
 
-        window: Any = windows[0]
+        ranked_windows: list[tuple[int, Any]] = []
+        for window in windows:
+            rank = self._rank_window(window, title)
+            if rank is None:
+                continue
+            ranked_windows.append((rank, window))
+
+        if not ranked_windows:
+            return None
+
+        ranked_windows.sort(key=lambda item: item[0])
+        selected_window = ranked_windows[0][1]
         return WindowInfo(
-            title=window.title,
-            left=window.left,
-            top=window.top,
-            width=window.width,
-            height=window.height,
-            is_active=bool(window.isActive),
+            title=selected_window.title,
+            left=selected_window.left,
+            top=selected_window.top,
+            width=selected_window.width,
+            height=selected_window.height,
+            is_active=bool(selected_window.isActive),
         )
+
+    def _rank_window(self, window: Any, requested_title: str) -> int | None:
+        window_title = str(getattr(window, "title", "") or "").strip()
+        if not window_title:
+            return None
+        if window_title.lower() in _EXCLUDED_WINDOW_TITLES:
+            return None
+
+        executable_name = self._get_process_name(window)
+        title_lower = window_title.lower()
+        requested_lower = requested_title.lower()
+        is_active = bool(getattr(window, "isActive", False))
+
+        if executable_name in _GAME_EXECUTABLE_NAMES:
+            return 0 if is_active else 1
+        if title_lower == requested_lower:
+            return 2 if is_active else 3
+        if title_lower.startswith(requested_lower) and "bot" not in title_lower:
+            return 4 if is_active else 5
+        if requested_lower in title_lower and "bot" not in title_lower:
+            return 6 if is_active else 7
+        return None
+
+    def _get_process_name(self, window: Any) -> str | None:
+        if psutil is None:
+            return None
+
+        hwnd = getattr(window, "_hWnd", None)
+        if hwnd is None:
+            return None
+
+        process_id = ctypes.c_ulong()
+        ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
+        if process_id.value == 0:
+            return None
+
+        try:
+            process = psutil.Process(process_id.value)
+            executable = process.exe() or process.name()
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError):
+            return None
+
+        return Path(executable).name.lower()
