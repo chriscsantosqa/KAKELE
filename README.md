@@ -3,6 +3,21 @@
 O Kakele Bot é gratuito e open source.
 Bot leve e simples, com reconhecimento óptico de caracteres (OCR).
 
+## Next-generation bootstrap
+
+For the current next-generation bootstrap flow, use these documents first:
+- `docs/OPERATIONAL_READINESS_PACKAGE.md`
+- `docs/FIRST_USE_CHECKLIST.md`
+- `docs/GPT_VISION_SETUP.md`
+- `docs/USAGE_READINESS_AND_GPT_VISION_AGENT.md`
+
+These documents describe:
+- controlled first usage
+- baseline validation
+- ROI/OCR calibration
+- AI-assisted visual diagnosis
+- GO / NO-GO criteria
+
 | Descrição                                                                                          | Imagem |
 |----------------------------------------------------------------------------------------------------| --- |
 | Iniciando o Bot por um login específico de algum usuário previamente cadastrado no banco de dados. | ![start](comp_out/samples/login.png) |
