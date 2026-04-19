@@ -21,6 +21,8 @@ class HealingLoopResult:
 
 
 class HealingLoopRunner:
+    _FAILSAFE_DISABLED_ACTIONS_PER_MINUTE = 1000
+
     def __init__(
         self,
         window_service: WindowService,
@@ -51,6 +53,10 @@ class HealingLoopRunner:
         action_times: deque[float] = deque()
         consecutive_ocr_failures = 0
         window_missing_since: float | None = None
+        enforce_actions_per_minute_limit = (
+            profile.healing_loop.max_actions_per_minute
+            < self._FAILSAFE_DISABLED_ACTIONS_PER_MINUTE
+        )
 
         while True:
             cycle_started_at = self._time_provider()
@@ -128,18 +134,19 @@ class HealingLoopRunner:
                 fail_safe_triggered = True
                 break
 
-            now = self._time_provider()
-            for _ in range(len(last_cycle.actions_executed)):
-                action_times.append(now)
-            one_minute_ago = now - 60.0
-            while action_times and action_times[0] < one_minute_ago:
-                action_times.popleft()
+            if enforce_actions_per_minute_limit:
+                now = self._time_provider()
+                for _ in range(len(last_cycle.actions_executed)):
+                    action_times.append(now)
+                one_minute_ago = now - 60.0
+                while action_times and action_times[0] < one_minute_ago:
+                    action_times.popleft()
 
-            if len(action_times) > profile.healing_loop.max_actions_per_minute:
-                terminated_early = True
-                termination_reason = "actions-per-minute-limit"
-                fail_safe_triggered = True
-                break
+                if len(action_times) > profile.healing_loop.max_actions_per_minute:
+                    terminated_early = True
+                    termination_reason = "actions-per-minute-limit"
+                    fail_safe_triggered = True
+                    break
 
             if not continuous_mode and cycle_index >= cycle_limit:
                 break
