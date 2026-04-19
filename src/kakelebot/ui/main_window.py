@@ -561,14 +561,26 @@ class MainWindow:
         if self._worker is not None and self._worker.is_alive():
             self._append_output("Start ignored: session already running.\n")
             return
+        try:
+            runtime_profile = self._build_runtime_profile_from_form()
+            self._append_output("Starting session...\n")
+            self._worker = threading.Thread(
+                target=self._run_session,
+                args=(runtime_profile,),
+                daemon=True,
+            )
+            self._worker.start()
+        except ValueError as error:
+            self._append_output(f"Start failed: {error}\n")
 
-        self._append_output("Starting session...\n")
-        self._worker = threading.Thread(target=self._run_session, daemon=True)
-        self._worker.start()
+    def _build_runtime_profile_from_form(self) -> ProfileSettings:
+        runtime_profile = copy.deepcopy(self._profile)
+        self._sync_form_into_profile(runtime_profile)
+        return runtime_profile
 
-    def _run_session(self) -> None:
+    def _run_session(self, runtime_profile: ProfileSettings) -> None:
         result = self._session_controller.start_healing_bootstrap_session(
-            profile=self._profile,
+            profile=runtime_profile,
             profile_path=self._profile_path,
         )
         self._last_session_result = result
@@ -1441,20 +1453,20 @@ class MainWindow:
             self._ui_scale_var.get(), minimum=0.5, field_name="UI scale"
         )
         profile.healing_loop.polling_interval_seconds = self._parse_float(
-            self._polling_interval_var.get(), minimum=0.1, field_name="Polling (s)"
+            self._polling_interval_var.get(), minimum=0.01, field_name="Polling (s)"
         )
         profile.healing_loop.life_cooldown_seconds = self._parse_float(
-            self._life_cooldown_var.get(), minimum=0.1, field_name="Life cooldown (s)"
+            self._life_cooldown_var.get(), minimum=0.01, field_name="Life cooldown (s)"
         )
         profile.healing_loop.mana_cooldown_seconds = self._parse_float(
-            self._mana_cooldown_var.get(), minimum=0.1, field_name="Mana cooldown (s)"
+            self._mana_cooldown_var.get(), minimum=0.01, field_name="Mana cooldown (s)"
         )
         profile.healing_loop.bootstrap_cycle_limit = self._parse_int(
             self._cycle_limit_var.get(), minimum=1, maximum=9999, field_name="Cycle limit"
         )
         profile.healing_loop.continuous_mode = bool(self._continuous_mode_var.get())
         profile.healing_loop.max_actions_per_minute = self._parse_int(
-            self._max_actions_per_minute_var.get(), minimum=1, maximum=9999, field_name="Max actions/min"
+            self._max_actions_per_minute_var.get(), minimum=1, maximum=999999, field_name="Max actions/min"
         )
         profile.healing_loop.max_consecutive_ocr_failures = self._parse_int(
             self._max_consecutive_ocr_failures_var.get(), minimum=1, maximum=9999, field_name="Max OCR failures"
@@ -1471,24 +1483,24 @@ class MainWindow:
         profile.hotkeys.attack_secondary = self._secondary_attack_hotkey_var.get().strip().upper()
         profile.buffs.haste_enabled = bool(self._haste_enabled_var.get())
         profile.buffs.haste_interval_seconds = self._parse_float(
-            self._haste_interval_var.get(), minimum=0.1, field_name="Haste interval (s)"
+            self._haste_interval_var.get(), minimum=0.01, field_name="Haste interval (s)"
         )
         profile.buffs.haste_cooldown_seconds = self._parse_float(
-            self._haste_cooldown_var.get(), minimum=0.1, field_name="Haste cooldown (s)"
+            self._haste_cooldown_var.get(), minimum=0.01, field_name="Haste cooldown (s)"
         )
         profile.combat.attack_enabled = bool(self._attack_enabled_var.get())
         profile.combat.attack_cooldown_seconds = self._parse_float(
-            self._attack_cooldown_var.get(), minimum=0.05, field_name="Attack cooldown (s)"
+            self._attack_cooldown_var.get(), minimum=0.01, field_name="Attack cooldown (s)"
         )
         profile.combat.secondary_attack_enabled = bool(self._secondary_attack_enabled_var.get())
         profile.combat.secondary_attack_cooldown_seconds = self._parse_float(
-            self._secondary_attack_cooldown_var.get(), minimum=0.05, field_name="Secondary cooldown (s)"
+            self._secondary_attack_cooldown_var.get(), minimum=0.01, field_name="Secondary cooldown (s)"
         )
         profile.combat.secondary_attack_after_primary_only = bool(
             self._secondary_attack_after_primary_only_var.get()
         )
         profile.combat.secondary_attack_combo_window_seconds = self._parse_float(
-            self._secondary_attack_combo_window_var.get(), minimum=0.05, field_name="Secondary combo window (s)"
+            self._secondary_attack_combo_window_var.get(), minimum=0.01, field_name="Secondary combo window (s)"
         )
         profile.combat.target_confirmation_cycles = self._parse_int(
             self._target_confirmation_cycles_var.get(), minimum=1, maximum=20, field_name="Target confirmations"
