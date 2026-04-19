@@ -30,6 +30,7 @@ dev = [
 [project.scripts]
 kakelebot = "kakelebot.app:run"
 kakelebot-gui = "kakelebot.gui:run_gui"
+kakelebot-ai-diagnose = "kakelebot.ai_diagnose:run"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
