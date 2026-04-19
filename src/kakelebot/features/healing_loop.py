@@ -53,6 +53,8 @@ class HealingLoopRunner:
         window_missing_since: float | None = None
 
         while True:
+            cycle_started_at = self._time_provider()
+
             if should_continue is not None and not should_continue():
                 terminated_early = True
                 termination_reason = "stopped-by-user"
@@ -63,7 +65,7 @@ class HealingLoopRunner:
                     terminated_early = True
                     termination_reason = "stopped-by-user"
                     break
-                self._sleep(0.1)
+                self._sleep(0.05)
 
             if terminated_early:
                 break
@@ -80,12 +82,13 @@ class HealingLoopRunner:
                     termination_reason = "window-missing-timeout"
                     fail_safe_triggered = True
                     break
-                self._sleep(profile.healing_loop.polling_interval_seconds)
+                self._sleep(min(0.10, profile.healing_loop.polling_interval_seconds))
                 continue
 
             snapshot = self._calibration_service.build_snapshot(window, profile)
 
             last_cycle = self._healing_runtime.execute_cycle(
+                window=window,
                 snapshot=snapshot,
                 life_hotkey=profile.hotkeys.heal_life,
                 mana_hotkey=profile.hotkeys.heal_mana,
@@ -140,7 +143,10 @@ class HealingLoopRunner:
             if not continuous_mode and cycle_index >= cycle_limit:
                 break
 
-            self._sleep(profile.healing_loop.polling_interval_seconds)
+            cycle_elapsed = self._time_provider() - cycle_started_at
+            remaining_sleep = profile.healing_loop.polling_interval_seconds - cycle_elapsed
+            if remaining_sleep > 0:
+                self._sleep(remaining_sleep)
 
         return HealingLoopResult(
             cycles_completed=cycles_completed,
