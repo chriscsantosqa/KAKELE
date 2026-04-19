@@ -55,6 +55,85 @@ def save_ai_analysis_result(
     return target_path
 
 
+def load_latest_ai_analysis(root_dir: Path) -> dict | None:
+    latest_path = root_dir / "latest.json"
+    if not latest_path.exists():
+        return None
+    try:
+        return json.loads(latest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def build_ai_analysis_comparison(previous: dict | None, current: AIVisionAnalysisResult) -> tuple[str, str]:
+    if previous is None:
+        return (
+            "first AI analysis saved for this profile",
+            "baseline established for future comparison",
+        )
+
+    changes: list[str] = []
+    positives: list[str] = []
+    warnings: list[str] = []
+
+    previous_readiness = bool(previous.get("can_start_session"))
+    current_readiness = bool(current.can_start_session)
+    if previous_readiness != current_readiness:
+        changes.append(f"can_start_session {previous_readiness} -> {current_readiness}")
+        if current_readiness:
+            positives.append("session readiness improved")
+        else:
+            warnings.append("session readiness regressed")
+
+    previous_state = str(previous.get("screen_state", "unknown"))
+    if previous_state != current.screen_state:
+        changes.append(f"screen_state '{previous_state}' -> '{current.screen_state}'")
+
+    previous_error = previous.get("error_message")
+    current_error = current.error_message
+    if previous_error != current_error:
+        changes.append("error state changed")
+        if current_error:
+            warnings.append("current analysis returned an error")
+        elif previous_error and not current_error:
+            positives.append("current analysis removed the previous error")
+
+    previous_detections = previous.get("detected_elements") or {}
+    for key, value in current.detected_elements.items():
+        previous_detected = bool((previous_detections.get(key) or {}).get("detected"))
+        if previous_detected != value.detected:
+            changes.append(f"{key} detected {previous_detected} -> {value.detected}")
+            if value.detected:
+                positives.append(f"{key} is now detected")
+            else:
+                warnings.append(f"{key} is no longer detected")
+
+    previous_rois = previous.get("suggested_rois") or {}
+    current_rois = serialize_ai_analysis_result(current).get("suggested_rois") or {}
+    if previous_rois != current_rois:
+        changes.append("suggested ROI set changed")
+
+    previous_issues = previous.get("issues") or []
+    current_issues = current.issues or []
+    if previous_issues != current_issues:
+        changes.append("issue list changed")
+        if len(current_issues) < len(previous_issues):
+            positives.append("fewer issues than previous analysis")
+        elif len(current_issues) > len(previous_issues):
+            warnings.append("more issues than previous analysis")
+
+    comparison_summary = ", ".join(changes) if changes else "no significant change from latest saved AI analysis"
+
+    if warnings:
+        assessment = "review required: " + ", ".join(warnings)
+    elif positives:
+        assessment = "looks improved: " + ", ".join(positives)
+    else:
+        assessment = "stable relative to the latest saved AI analysis"
+
+    return comparison_summary, assessment
+
+
 def trim_ai_analysis_history(root_dir: Path, history_limit: int) -> None:
     history_files = sorted(
         [path for path in root_dir.glob("*.json") if path.name != "latest.json"],
