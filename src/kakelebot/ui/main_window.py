@@ -13,6 +13,7 @@ from kakelebot.core.global_hotkeys import GlobalHotkeyService
 from kakelebot.core.profile_manager import ProfileManager
 from kakelebot.core.session import SessionController, SessionPreviewResult, SessionRunResult, SessionState
 from kakelebot.ui.preview_panel import PreviewPanel
+from kakelebot.ui.roi_editor_panel import RoiEditorPanel
 from kakelebot.ui.snapshot_panel import SnapshotPanel
 
 
@@ -40,6 +41,7 @@ class MainWindow:
         self._life_processed_preview_image = None
         self._mana_processed_preview_image = None
         self._preview_panel: PreviewPanel | None = None
+        self._roi_editor_panel: RoiEditorPanel | None = None
         self._snapshot_panel: SnapshotPanel | None = None
 
         preset_values = self._preset_display_values()
@@ -384,133 +386,25 @@ class MainWindow:
         )
 
     def _build_roi_editor(self, parent: ttk.Frame) -> None:
-        roi_editor = ttk.LabelFrame(parent, text="Assisted ROI calibration", padding=12)
-        roi_editor.pack(fill=tk.BOTH, expand=False)
-
-        ttk.Label(roi_editor, text="Nudge step").grid(row=0, column=0, sticky=tk.W)
-        ttk.Entry(roi_editor, textvariable=self._roi_nudge_step_var, width=18).grid(
-            row=0,
-            column=1,
-            sticky=tk.EW,
-            padx=(10, 0),
+        self._roi_editor_panel = RoiEditorPanel(
+            parent=parent,
+            roi_nudge_step_var=self._roi_nudge_step_var,
+            life_left_ratio_var=self._life_left_ratio_var,
+            life_top_ratio_var=self._life_top_ratio_var,
+            life_width_ratio_var=self._life_width_ratio_var,
+            life_height_ratio_var=self._life_height_ratio_var,
+            mana_left_ratio_var=self._mana_left_ratio_var,
+            mana_top_ratio_var=self._mana_top_ratio_var,
+            mana_width_ratio_var=self._mana_width_ratio_var,
+            mana_height_ratio_var=self._mana_height_ratio_var,
+            target_left_ratio_var=self._target_left_ratio_var,
+            target_top_ratio_var=self._target_top_ratio_var,
+            target_width_ratio_var=self._target_width_ratio_var,
+            target_height_ratio_var=self._target_height_ratio_var,
+            on_nudge_roi=self._on_nudge_roi,
+            on_refresh_preview=self._on_refresh_preview,
+            on_save_roi_calibration=self._on_save_roi_calibration,
         )
-
-        row_cursor = 1
-        row_cursor = self._build_roi_section(
-            roi_editor,
-            row_cursor,
-            title="Life ROI ratios",
-            roi_name="life",
-            fields=[
-                ("Left", self._life_left_ratio_var),
-                ("Top", self._life_top_ratio_var),
-                ("Width", self._life_width_ratio_var),
-                ("Height", self._life_height_ratio_var),
-            ],
-        )
-        row_cursor = self._build_roi_section(
-            roi_editor,
-            row_cursor,
-            title="Mana ROI ratios",
-            roi_name="mana",
-            fields=[
-                ("Left", self._mana_left_ratio_var),
-                ("Top", self._mana_top_ratio_var),
-                ("Width", self._mana_width_ratio_var),
-                ("Height", self._mana_height_ratio_var),
-            ],
-        )
-        row_cursor = self._build_roi_section(
-            roi_editor,
-            row_cursor,
-            title="Target ROI ratios",
-            roi_name="target",
-            fields=[
-                ("Left", self._target_left_ratio_var),
-                ("Top", self._target_top_ratio_var),
-                ("Width", self._target_width_ratio_var),
-                ("Height", self._target_height_ratio_var),
-            ],
-        )
-
-        roi_editor.columnconfigure(1, weight=1)
-        ttk.Button(
-            roi_editor,
-            text="Save ROI calibration",
-            command=self._on_save_roi_calibration,
-        ).grid(
-            row=row_cursor,
-            column=0,
-            columnspan=2,
-            sticky=tk.EW,
-            pady=(12, 0),
-        )
-
-    def _build_roi_section(
-        self,
-        parent: ttk.LabelFrame,
-        row_start: int,
-        title: str,
-        roi_name: str,
-        fields: list[tuple[str, tk.StringVar]],
-    ) -> int:
-        ttk.Label(parent, text=title).grid(
-            row=row_start,
-            column=0,
-            columnspan=2,
-            sticky=tk.W,
-            pady=(10 if row_start > 1 else 8, 0),
-        )
-
-        for offset, (label, variable) in enumerate(fields, start=1):
-            ttk.Label(parent, text=label).grid(
-                row=row_start + offset,
-                column=0,
-                sticky=tk.W,
-                pady=3,
-            )
-            ttk.Entry(parent, textvariable=variable, width=18).grid(
-                row=row_start + offset,
-                column=1,
-                sticky=tk.EW,
-                pady=3,
-                padx=(10, 0),
-            )
-
-        buttons = ttk.Frame(parent)
-        buttons.grid(
-            row=row_start + len(fields) + 1,
-            column=0,
-            columnspan=2,
-            sticky=tk.EW,
-            pady=(6, 0),
-        )
-
-        button_specs = [
-            ("L-", "left", -1),
-            ("L+", "left", 1),
-            ("T-", "top", -1),
-            ("T+", "top", 1),
-            ("W-", "width", -1),
-            ("W+", "width", 1),
-            ("H-", "height", -1),
-            ("H+", "height", 1),
-        ]
-        for index, (label, field_name, direction) in enumerate(button_specs):
-            ttk.Button(
-                buttons,
-                text=label,
-                width=4,
-                command=lambda rn=roi_name, fn=field_name, d=direction: self._on_nudge_roi(rn, fn, d),
-            ).grid(row=0, column=index, padx=2, pady=2)
-
-        ttk.Button(buttons, text="Preview", command=self._on_refresh_preview).grid(
-            row=0,
-            column=len(button_specs),
-            padx=(8, 0),
-            pady=2,
-        )
-        return row_start + len(fields) + 2
 
     def _build_diagnostics(self, parent: ttk.Frame) -> None:
         diagnostics = ttk.LabelFrame(parent, text="Diagnostics", padding=12)
