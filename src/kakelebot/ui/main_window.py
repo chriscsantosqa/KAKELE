@@ -14,6 +14,7 @@ from kakelebot.core.profile_manager import ProfileManager
 from kakelebot.core.session import SessionController, SessionPreviewResult, SessionRunResult, SessionState
 from kakelebot.ui.preview_panel import PreviewPanel
 from kakelebot.ui.profile_config_panel import ProfileConfigPanel
+from kakelebot.ui.profiles_panel import ProfilesPanel
 from kakelebot.ui.roi_editor_panel import RoiEditorPanel
 from kakelebot.ui.snapshot_panel import SnapshotPanel
 
@@ -38,6 +39,7 @@ class MainWindow:
         self._last_preview_result: SessionPreviewResult | None = None
         self._last_preview_profile: ProfileSettings | None = None
         self._preview_panel: PreviewPanel | None = None
+        self._profiles_panel: ProfilesPanel | None = None
         self._snapshot_panel: SnapshotPanel | None = None
 
         preset_values = self._preset_display_values()
@@ -213,53 +215,21 @@ class MainWindow:
         self._build_output(right_panel)
 
     def _build_profile_manager(self, parent: ttk.Frame) -> None:
-        manager = ttk.LabelFrame(parent, text="Profiles", padding=12)
-        manager.pack(fill=tk.X, pady=(0, 12))
-
-        ttk.Label(manager, text="Selected profile").pack(anchor=tk.W)
-        self._profile_selector = ttk.Combobox(
-            manager,
-            textvariable=self._selected_profile_var,
-            state="readonly",
-            width=24,
-        )
-        self._profile_selector.pack(fill=tk.X, pady=(4, 8))
-
-        ttk.Button(manager, text="Load selected", command=self._on_load_selected_profile).pack(
-            fill=tk.X, pady=(0, 8)
-        )
-        ttk.Button(manager, text="Delete selected", command=self._on_delete_selected_profile).pack(
-            fill=tk.X, pady=(0, 8)
-        )
-
-        ttk.Label(manager, text="Save current as new profile").pack(anchor=tk.W)
-        ttk.Entry(manager, textvariable=self._new_profile_name_var).pack(fill=tk.X, pady=(4, 8))
-        ttk.Button(manager, text="Save as new profile", command=self._on_save_as_new_profile).pack(
-            fill=tk.X, pady=(0, 12)
-        )
-
-        ttk.Separator(manager, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(0, 12))
-        ttk.Label(manager, text="Combat preset").pack(anchor=tk.W)
-        self._preset_selector = ttk.Combobox(
-            manager,
-            textvariable=self._selected_preset_var,
-            state="readonly",
-            values=self._preset_display_values(),
-            width=24,
-        )
-        self._preset_selector.pack(fill=tk.X, pady=(4, 4))
-        self._preset_selector.bind("<<ComboboxSelected>>", self._on_preset_selected)
-        ttk.Label(manager, textvariable=self._preset_description_var, wraplength=260, justify=tk.LEFT).pack(
-            anchor=tk.W, pady=(0, 8)
-        )
-        ttk.Button(manager, text="Apply preset to current", command=self._on_apply_preset_to_current).pack(
-            fill=tk.X, pady=(0, 8)
-        )
-
-        ttk.Label(manager, text="Save preset as new profile").pack(anchor=tk.W)
-        ttk.Entry(manager, textvariable=self._preset_profile_name_var).pack(fill=tk.X, pady=(4, 8))
-        ttk.Button(manager, text="Create preset profile", command=self._on_save_preset_profile).pack(
-            fill=tk.X
+        self._profiles_panel = ProfilesPanel(
+            parent=parent,
+            selected_profile_var=self._selected_profile_var,
+            new_profile_name_var=self._new_profile_name_var,
+            selected_preset_var=self._selected_preset_var,
+            preset_profile_name_var=self._preset_profile_name_var,
+            preset_description_var=self._preset_description_var,
+            profile_values=[],
+            preset_values=self._preset_display_values(),
+            on_load_selected=self._on_load_selected_profile,
+            on_delete_selected=self._on_delete_selected_profile,
+            on_save_as_new_profile=self._on_save_as_new_profile,
+            on_apply_preset_to_current=self._on_apply_preset_to_current,
+            on_save_preset_profile=self._on_save_preset_profile,
+            on_preset_selected=self._on_preset_selected,
         )
 
     def _build_actions(self, parent: ttk.Frame) -> None:
@@ -434,18 +404,19 @@ class MainWindow:
         if self._profile_manager is None:
             return
         profile_names = [record.name for record in self._profile_manager.list_profiles()]
-        if hasattr(self, "_profile_selector"):
-            self._profile_selector["values"] = profile_names
+        if self._profiles_panel is not None:
+            self._profiles_panel.set_profile_names(profile_names)
         if self._profile.name in profile_names:
             self._selected_profile_var.set(self._profile.name)
         elif profile_names:
             self._selected_profile_var.set(profile_names[0])
 
-        if hasattr(self, "_preset_selector"):
-            self._preset_selector["values"] = self._preset_display_values()
-            if not self._selected_preset_var.get() and self._preset_display_values():
-                self._selected_preset_var.set(self._preset_display_values()[0])
-            self._preset_description_var.set(self._preset_description(self._selected_preset_var.get()))
+        preset_values = self._preset_display_values()
+        if self._profiles_panel is not None:
+            self._profiles_panel.set_preset_values(preset_values)
+        if not self._selected_preset_var.get() and preset_values:
+            self._selected_preset_var.set(preset_values[0])
+        self._preset_description_var.set(self._preset_description(self._selected_preset_var.get()))
 
     def _update_diagnostics(self, result: SessionRunResult) -> None:
         loop_result = result.healing_loop_result
