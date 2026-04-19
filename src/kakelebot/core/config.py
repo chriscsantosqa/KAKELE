@@ -16,6 +16,18 @@ class RuntimeSettings:
 
 
 @dataclass(slots=True)
+class AiVisionSettings:
+    enabled: bool = False
+    provider: str = "openai_compatible"
+    base_url: str = "https://api.openai.com"
+    endpoint_path: str = "/v1/chat/completions"
+    model: str = ""
+    api_key_env_var: str = "OPENAI_API_KEY"
+    timeout_seconds: float = 45.0
+    allow_auto_apply_roi_suggestions: bool = False
+
+
+@dataclass(slots=True)
 class HotkeysSettings:
     start_stop: str = "F8"
     pause_resume: str = "F9"
@@ -105,6 +117,7 @@ class ProfileSettings:
 @dataclass(slots=True)
 class AppSettings:
     runtime: RuntimeSettings = field(default_factory=RuntimeSettings)
+    ai_vision: AiVisionSettings = field(default_factory=AiVisionSettings)
 
     def save(self, path: Path) -> None:
         path.write_text(json.dumps(asdict(self), indent=2), encoding="utf-8")
@@ -118,7 +131,8 @@ class AppSettings:
 
         raw = json.loads(path.read_text(encoding="utf-8"))
         runtime = RuntimeSettings(**raw.get("runtime", {}))
-        return cls(runtime=runtime)
+        ai_vision = AiVisionSettings(**raw.get("ai_vision", {}))
+        return cls(runtime=runtime, ai_vision=ai_vision)
 
 
 def save_profile(path: Path, profile: ProfileSettings) -> None:
