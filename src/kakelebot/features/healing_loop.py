@@ -89,6 +89,7 @@ class HealingLoopRunner:
             snapshot = self._calibration_service.build_snapshot(window, profile)
 
             last_cycle = self._healing_runtime.execute_cycle(
+                window=window,
                 snapshot=snapshot,
                 life_hotkey=profile.hotkeys.heal_life,
                 mana_hotkey=profile.hotkeys.heal_mana,
