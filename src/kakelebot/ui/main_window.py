@@ -6,7 +6,7 @@ import threading
 from datetime import UTC, datetime
 import tkinter as tk
 from pathlib import Path
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 from kakelebot.core.config import ProfileSettings, save_profile
 from kakelebot.core.global_hotkeys import GlobalHotkeyService
@@ -254,6 +254,7 @@ class MainWindow:
             on_resume=self._on_resume,
             on_stop=self._on_stop,
             on_refresh_preview=self._on_refresh_preview,
+            on_analyze_current_screen_with_ai=self._on_analyze_current_screen_with_ai,
             on_adopt_current_window_baseline=self._on_adopt_current_window_baseline,
             on_save_calibration_snapshot=self._on_save_calibration_snapshot,
         )
@@ -564,6 +565,84 @@ class MainWindow:
                 self._append_output("ROI / OCR preview refreshed.\n")
         except ValueError as error:
             self._append_output(f"Preview refresh failed: {error}\n")
+
+    def _on_analyze_current_screen_with_ai(self) -> None:
+        if self._worker is not None and self._worker.is_alive():
+            self._append_output("AI visual analysis ignored: session is running.\n")
+            return
+        try:
+            analysis_profile = self._build_preview_profile_from_form()
+            self._append_output("Running AI visual analysis...\n")
+            result = self._session_controller.analyze_visual_state(analysis_profile)
+            self._append_output(self._format_ai_analysis_result(result))
+            if result.error_message:
+                return
+            if result.suggested_rois and messagebox.askyesno(
+                "Apply AI ROI suggestions",
+                "AI returned ROI suggestions. Apply them to the current form?",
+            ):
+                self._apply_ai_roi_suggestions(result.suggested_rois)
+                self._append_output("AI ROI suggestions applied to current form.\n")
+                self._on_refresh_preview()
+        except ValueError as error:
+            self._append_output(f"AI visual analysis failed: {error}\n")
+
+    def _apply_ai_roi_suggestions(self, suggested_rois: dict) -> None:
+        mapping = {
+            "life": (
+                self._life_left_ratio_var,
+                self._life_top_ratio_var,
+                self._life_width_ratio_var,
+                self._life_height_ratio_var,
+            ),
+            "mana": (
+                self._mana_left_ratio_var,
+                self._mana_top_ratio_var,
+                self._mana_width_ratio_var,
+                self._mana_height_ratio_var,
+            ),
+            "target": (
+                self._target_left_ratio_var,
+                self._target_top_ratio_var,
+                self._target_width_ratio_var,
+                self._target_height_ratio_var,
+            ),
+        }
+        for roi_name, region in suggested_rois.items():
+            variables = mapping.get(roi_name)
+            if variables is None:
+                continue
+            left_var, top_var, width_var, height_var = variables
+            left_var.set(self._format_ratio(region.left_ratio))
+            top_var.set(self._format_ratio(region.top_ratio))
+            width_var.set(self._format_ratio(region.width_ratio))
+            height_var.set(self._format_ratio(region.height_ratio))
+
+    @staticmethod
+    def _format_ai_analysis_result(result) -> str:
+        lines = [
+            "AI visual analysis:",
+            f"summary={result.summary}",
+            f"screen_state={result.screen_state}",
+            f"can_start_session={result.can_start_session}",
+        ]
+        if result.error_message:
+            lines.append(f"error={result.error_message}")
+        if result.issues:
+            lines.append("issues=" + " | ".join(result.issues))
+        if result.recommended_actions:
+            lines.append("recommended_actions=" + " | ".join(result.recommended_actions))
+        if result.detected_elements:
+            for key, value in result.detected_elements.items():
+                lines.append(
+                    f"detected_{key}={value.detected} confidence={value.confidence} rationale={value.rationale}"
+                )
+        if result.suggested_rois:
+            for key, value in result.suggested_rois.items():
+                lines.append(
+                    f"suggested_roi_{key}=left:{value.left_ratio:.4f} top:{value.top_ratio:.4f} width:{value.width_ratio:.4f} height:{value.height_ratio:.4f}"
+                )
+        return "\n".join(lines) + "\n\n"
 
     def _on_nudge_roi(self, roi_name: str, field_name: str, direction: int) -> None:
         try:
