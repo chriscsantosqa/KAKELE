@@ -16,6 +16,7 @@ from kakelebot.ui.preview_panel import PreviewPanel
 from kakelebot.ui.profile_config_panel import ProfileConfigPanel
 from kakelebot.ui.profiles_panel import ProfilesPanel
 from kakelebot.ui.roi_editor_panel import RoiEditorPanel
+from kakelebot.ui.session_actions_panel import SessionActionsPanel
 from kakelebot.ui.snapshot_panel import SnapshotPanel
 
 
@@ -233,16 +234,16 @@ class MainWindow:
         )
 
     def _build_actions(self, parent: ttk.Frame) -> None:
-        actions = ttk.LabelFrame(parent, text="Session", padding=12)
-        actions.pack(fill=tk.X, pady=(0, 12))
-
-        ttk.Button(actions, text="Start", command=self._on_start).pack(fill=tk.X, pady=(0, 6))
-        ttk.Button(actions, text="Pause", command=self._on_pause).pack(fill=tk.X, pady=(0, 6))
-        ttk.Button(actions, text="Resume", command=self._on_resume).pack(fill=tk.X, pady=(0, 6))
-        ttk.Button(actions, text="Stop", command=self._on_stop).pack(fill=tk.X, pady=(0, 6))
-        ttk.Button(actions, text="Refresh ROI/OCR preview", command=self._on_refresh_preview).pack(fill=tk.X, pady=(0, 6))
-        ttk.Button(actions, text="Adopt current window as baseline", command=self._on_adopt_current_window_baseline).pack(fill=tk.X, pady=(0, 6))
-        ttk.Button(actions, text="Save calibration snapshot", command=self._on_save_calibration_snapshot).pack(fill=tk.X)
+        SessionActionsPanel(
+            parent=parent,
+            on_start=self._on_start,
+            on_pause=self._on_pause,
+            on_resume=self._on_resume,
+            on_stop=self._on_stop,
+            on_refresh_preview=self._on_refresh_preview,
+            on_adopt_current_window_baseline=self._on_adopt_current_window_baseline,
+            on_save_calibration_snapshot=self._on_save_calibration_snapshot,
+        )
 
     def _build_config_editor(self, parent: ttk.Frame) -> None:
         ProfileConfigPanel(
