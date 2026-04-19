@@ -174,63 +174,69 @@ class ProfileManager:
         cls._apply_resolution_context(profile, "heal_safe")
 
         profile.buffs.haste_enabled = False
-        profile.buffs.haste_interval_seconds = 30.0
-        profile.buffs.haste_cooldown_seconds = 1.0
+        profile.buffs.haste_interval_seconds = 20.0
+        profile.buffs.haste_cooldown_seconds = 0.35
 
         profile.combat.attack_enabled = False
-        profile.combat.attack_cooldown_seconds = 0.5
+        profile.combat.attack_cooldown_seconds = 0.25
         profile.combat.secondary_attack_enabled = False
-        profile.combat.secondary_attack_cooldown_seconds = 2.0
+        profile.combat.secondary_attack_cooldown_seconds = 0.70
         profile.combat.secondary_attack_after_primary_only = True
-        profile.combat.secondary_attack_combo_window_seconds = 1.0
-        profile.combat.target_confirmation_cycles = 3
-        profile.combat.target_stability_window = 5
+        profile.combat.secondary_attack_combo_window_seconds = 0.50
+        profile.combat.target_confirmation_cycles = 1
+        profile.combat.target_stability_window = 3
         profile.combat.max_target_text_variants = 1
 
         profile.healing_loop.continuous_mode = True
-        profile.healing_loop.polling_interval_seconds = 0.35
+        profile.healing_loop.polling_interval_seconds = 0.08
+        profile.healing_loop.life_cooldown_seconds = 0.10
+        profile.healing_loop.mana_cooldown_seconds = 0.10
 
     @classmethod
     def _apply_hunt_basic(cls, profile: ProfileSettings) -> None:
         cls._apply_resolution_context(profile, "hunt_basic")
 
         profile.buffs.haste_enabled = True
-        profile.buffs.haste_interval_seconds = 20.0
-        profile.buffs.haste_cooldown_seconds = 1.0
+        profile.buffs.haste_interval_seconds = 14.0
+        profile.buffs.haste_cooldown_seconds = 0.30
 
         profile.combat.attack_enabled = True
-        profile.combat.attack_cooldown_seconds = 0.35
+        profile.combat.attack_cooldown_seconds = 0.14
         profile.combat.secondary_attack_enabled = False
-        profile.combat.secondary_attack_cooldown_seconds = 2.0
+        profile.combat.secondary_attack_cooldown_seconds = 0.60
         profile.combat.secondary_attack_after_primary_only = True
-        profile.combat.secondary_attack_combo_window_seconds = 1.0
-        profile.combat.target_confirmation_cycles = 2
-        profile.combat.target_stability_window = 4
+        profile.combat.secondary_attack_combo_window_seconds = 0.40
+        profile.combat.target_confirmation_cycles = 1
+        profile.combat.target_stability_window = 3
         profile.combat.max_target_text_variants = 2
 
         profile.healing_loop.continuous_mode = True
-        profile.healing_loop.polling_interval_seconds = 0.25
+        profile.healing_loop.polling_interval_seconds = 0.06
+        profile.healing_loop.life_cooldown_seconds = 0.08
+        profile.healing_loop.mana_cooldown_seconds = 0.08
 
     @classmethod
     def _apply_combo_aggressive(cls, profile: ProfileSettings) -> None:
         cls._apply_resolution_context(profile, "combo_aggressive")
 
         profile.buffs.haste_enabled = True
-        profile.buffs.haste_interval_seconds = 18.0
-        profile.buffs.haste_cooldown_seconds = 1.0
+        profile.buffs.haste_interval_seconds = 12.0
+        profile.buffs.haste_cooldown_seconds = 0.25
 
         profile.combat.attack_enabled = True
-        profile.combat.attack_cooldown_seconds = 0.25
+        profile.combat.attack_cooldown_seconds = 0.10
         profile.combat.secondary_attack_enabled = True
-        profile.combat.secondary_attack_cooldown_seconds = 1.2
+        profile.combat.secondary_attack_cooldown_seconds = 0.35
         profile.combat.secondary_attack_after_primary_only = True
-        profile.combat.secondary_attack_combo_window_seconds = 0.8
-        profile.combat.target_confirmation_cycles = 2
-        profile.combat.target_stability_window = 4
+        profile.combat.secondary_attack_combo_window_seconds = 0.28
+        profile.combat.target_confirmation_cycles = 1
+        profile.combat.target_stability_window = 3
         profile.combat.max_target_text_variants = 2
 
         profile.healing_loop.continuous_mode = True
-        profile.healing_loop.polling_interval_seconds = 0.2
+        profile.healing_loop.polling_interval_seconds = 0.05
+        profile.healing_loop.life_cooldown_seconds = 0.06
+        profile.healing_loop.mana_cooldown_seconds = 0.06
 
     @staticmethod
     def normalize_name(raw_name: str) -> str:
