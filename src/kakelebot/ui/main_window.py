@@ -13,6 +13,7 @@ from kakelebot.core.global_hotkeys import GlobalHotkeyService
 from kakelebot.core.profile_manager import ProfileManager
 from kakelebot.core.session import SessionController, SessionPreviewResult, SessionRunResult, SessionState
 from kakelebot.ui.preview_panel import PreviewPanel
+from kakelebot.ui.profile_config_panel import ProfileConfigPanel
 from kakelebot.ui.roi_editor_panel import RoiEditorPanel
 from kakelebot.ui.snapshot_panel import SnapshotPanel
 
@@ -274,110 +275,39 @@ class MainWindow:
         ttk.Button(actions, text="Save calibration snapshot", command=self._on_save_calibration_snapshot).pack(fill=tk.X)
 
     def _build_config_editor(self, parent: ttk.Frame) -> None:
-        editor = ttk.LabelFrame(parent, text="Profile configuration", padding=12)
-        editor.pack(fill=tk.BOTH, expand=False, pady=(0, 12))
-
-        fields = [
-            ("Life %", self._life_percent_var),
-            ("Mana %", self._mana_percent_var),
-            ("UI scale", self._ui_scale_var),
-            ("Polling (s)", self._polling_interval_var),
-            ("Life cooldown (s)", self._life_cooldown_var),
-            ("Mana cooldown (s)", self._mana_cooldown_var),
-            ("Cycle limit", self._cycle_limit_var),
-            ("Max actions/min", self._max_actions_per_minute_var),
-            ("Max OCR failures", self._max_consecutive_ocr_failures_var),
-            ("Window missing (s)", self._max_window_missing_seconds_var),
-            ("Start/Stop hotkey", self._start_stop_hotkey_var),
-            ("Pause/Resume hotkey", self._pause_resume_hotkey_var),
-            ("Life hotkey", self._heal_life_hotkey_var),
-            ("Mana hotkey", self._heal_mana_hotkey_var),
-            ("Haste hotkey", self._buff_haste_hotkey_var),
-            ("Attack hotkey", self._attack_hotkey_var),
-            ("Secondary hotkey", self._secondary_attack_hotkey_var),
-            ("Haste interval (s)", self._haste_interval_var),
-            ("Haste cooldown (s)", self._haste_cooldown_var),
-            ("Attack cooldown (s)", self._attack_cooldown_var),
-            ("Secondary cooldown (s)", self._secondary_attack_cooldown_var),
-            ("Secondary combo window (s)", self._secondary_attack_combo_window_var),
-            ("Target confirmations", self._target_confirmation_cycles_var),
-            ("Stability window", self._target_stability_window_var),
-            ("Max text variants", self._max_target_text_variants_var),
-        ]
-
-        for row_index, (label, variable) in enumerate(fields):
-            ttk.Label(editor, text=label).grid(row=row_index, column=0, sticky=tk.W, pady=4)
-            ttk.Entry(editor, textvariable=variable, width=18).grid(
-                row=row_index,
-                column=1,
-                sticky=tk.EW,
-                pady=4,
-                padx=(10, 0),
-            )
-
-        ttk.Checkbutton(
-            editor,
-            text="Continuous mode until stop",
-            variable=self._continuous_mode_var,
-        ).grid(
-            row=len(fields),
-            column=0,
-            columnspan=2,
-            sticky=tk.W,
-            pady=(8, 0),
-        )
-        ttk.Checkbutton(
-            editor,
-            text="Enable haste buff",
-            variable=self._haste_enabled_var,
-        ).grid(
-            row=len(fields) + 1,
-            column=0,
-            columnspan=2,
-            sticky=tk.W,
-            pady=(4, 0),
-        )
-        ttk.Checkbutton(
-            editor,
-            text="Enable target attack",
-            variable=self._attack_enabled_var,
-        ).grid(
-            row=len(fields) + 2,
-            column=0,
-            columnspan=2,
-            sticky=tk.W,
-            pady=(4, 0),
-        )
-        ttk.Checkbutton(
-            editor,
-            text="Enable secondary combo",
-            variable=self._secondary_attack_enabled_var,
-        ).grid(
-            row=len(fields) + 3,
-            column=0,
-            columnspan=2,
-            sticky=tk.W,
-            pady=(4, 0),
-        )
-        ttk.Checkbutton(
-            editor,
-            text="Secondary only after primary",
-            variable=self._secondary_attack_after_primary_only_var,
-        ).grid(
-            row=len(fields) + 4,
-            column=0,
-            columnspan=2,
-            sticky=tk.W,
-            pady=(4, 0),
-        )
-
-        editor.columnconfigure(1, weight=1)
-        ttk.Button(editor, text="Save profile", command=self._on_save_profile).grid(
-            row=len(fields) + 5,
-            column=0,
-            columnspan=2,
-            sticky=tk.EW,
-            pady=(12, 0),
+        ProfileConfigPanel(
+            parent=parent,
+            life_percent_var=self._life_percent_var,
+            mana_percent_var=self._mana_percent_var,
+            ui_scale_var=self._ui_scale_var,
+            polling_interval_var=self._polling_interval_var,
+            life_cooldown_var=self._life_cooldown_var,
+            mana_cooldown_var=self._mana_cooldown_var,
+            cycle_limit_var=self._cycle_limit_var,
+            max_actions_per_minute_var=self._max_actions_per_minute_var,
+            max_consecutive_ocr_failures_var=self._max_consecutive_ocr_failures_var,
+            max_window_missing_seconds_var=self._max_window_missing_seconds_var,
+            start_stop_hotkey_var=self._start_stop_hotkey_var,
+            pause_resume_hotkey_var=self._pause_resume_hotkey_var,
+            heal_life_hotkey_var=self._heal_life_hotkey_var,
+            heal_mana_hotkey_var=self._heal_mana_hotkey_var,
+            buff_haste_hotkey_var=self._buff_haste_hotkey_var,
+            attack_hotkey_var=self._attack_hotkey_var,
+            secondary_attack_hotkey_var=self._secondary_attack_hotkey_var,
+            haste_interval_var=self._haste_interval_var,
+            haste_cooldown_var=self._haste_cooldown_var,
+            attack_cooldown_var=self._attack_cooldown_var,
+            secondary_attack_cooldown_var=self._secondary_attack_cooldown_var,
+            secondary_attack_combo_window_var=self._secondary_attack_combo_window_var,
+            target_confirmation_cycles_var=self._target_confirmation_cycles_var,
+            target_stability_window_var=self._target_stability_window_var,
+            max_target_text_variants_var=self._max_target_text_variants_var,
+            continuous_mode_var=self._continuous_mode_var,
+            haste_enabled_var=self._haste_enabled_var,
+            attack_enabled_var=self._attack_enabled_var,
+            secondary_attack_enabled_var=self._secondary_attack_enabled_var,
+            secondary_attack_after_primary_only_var=self._secondary_attack_after_primary_only_var,
+            on_save_profile=self._on_save_profile,
         )
 
     def _build_roi_editor(self, parent: ttk.Frame) -> None:
