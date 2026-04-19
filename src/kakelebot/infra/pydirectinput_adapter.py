@@ -11,4 +11,9 @@ class PyDirectInputAdapter:
         if pydirectinput is None:
             raise RuntimeError("pydirectinput is not installed.")
 
+        if hasattr(pydirectinput, "PAUSE"):
+            pydirectinput.PAUSE = 0
+        if hasattr(pydirectinput, "FAILSAFE"):
+            pydirectinput.FAILSAFE = False
+
         pydirectinput.press(key)
