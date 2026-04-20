@@ -50,10 +50,6 @@ Configure no perfil (`profiles/<nome>.json`):
 
 > Substitua os endereços pelos offsets válidos da sua versão do client.
 
-Validação rápida com o jogo aberto:
-
-`kakelebot-memory-check`
-
 | Descrição                                                                                          | Imagem |
 |----------------------------------------------------------------------------------------------------| --- |
 | Iniciando o Bot por um login específico de algum usuário previamente cadastrado no banco de dados. | ![start](comp_out/samples/login.png) |
