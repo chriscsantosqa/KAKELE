@@ -97,7 +97,7 @@ class HealingLoopRunner:
             snapshot = self._calibration_service.build_snapshot(window, profile)
             runtime_hunt_enabled = profile.hunt.enabled
             if is_cavebot_active is not None:
-                runtime_hunt_enabled = runtime_hunt_enabled and is_cavebot_active()
+                runtime_hunt_enabled = is_cavebot_active()
 
             last_cycle = self._healing_runtime.execute_cycle(
                 window=window,
