@@ -8,6 +8,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
 
+from kakelebot.core.memory_factory import build_memory_service
 from kakelebot.core.config import HuntWaypoint, ProfileSettings, save_profile
 from kakelebot.features.hunt_recorder import HuntRecorder
 from kakelebot.core.global_hotkeys import GlobalHotkeyService
