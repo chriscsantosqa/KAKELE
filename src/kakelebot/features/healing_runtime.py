@@ -89,6 +89,9 @@ class HealingRuntime:
         target_confirmation_cycles: int,
         target_stability_window: int,
         max_target_text_variants: int,
+        allowed_target_texts: list[str],
+        blocked_target_texts: list[str],
+        require_target_text_match: bool,
         life_threshold_percent: int,
         mana_threshold_percent: int,
         life_cooldown_seconds: float,
@@ -155,6 +158,9 @@ class HealingRuntime:
             confirmation_cycles=target_confirmation_cycles,
             stability_window=target_stability_window,
             max_target_text_variants=max_target_text_variants,
+            allowed_target_texts=allowed_target_texts,
+            blocked_target_texts=blocked_target_texts,
+            require_target_text_match=require_target_text_match,
         )
 
         valid_target = target_evaluation.valid
