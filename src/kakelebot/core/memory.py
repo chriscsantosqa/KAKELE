@@ -26,8 +26,6 @@ class MemoryReadResult:
     state: PlayerState | None
     source: str
     error: str | None = None
-    field_errors: dict[str, str] | None = None
-    raw_values: dict[str, int] | None = None
 
 
 class MemoryService:
@@ -36,28 +34,7 @@ class MemoryService:
 
     def try_get_player_state(self) -> MemoryReadResult:
         try:
-            diagnostics_reader = getattr(self._adapter, "read_with_diagnostics", None)
-            if callable(diagnostics_reader):
-                payload = diagnostics_reader()
-                data = payload.get("values", {})
-                field_errors = payload.get("errors", {})
-            else:
-                data = self._adapter.read_all_offsets()
-                field_errors = {}
-
-            required_fields = ("hp", "max_hp", "mp", "max_mp", "x", "y", "z", "has_target", "target_id")
-            missing = [name for name in required_fields if name not in data]
-            if missing:
-                message = f"missing required fields: {', '.join(missing)}"
-                return MemoryReadResult(
-                    available=False,
-                    state=None,
-                    source=self._adapter.__class__.__name__,
-                    error=message,
-                    field_errors=field_errors,
-                    raw_values=data,
-                )
-
+            data = self._adapter.read_all_offsets()
             state = PlayerState(
                 hp=max(0, int(data.get("hp", 0))),
                 max_hp=max(1, int(data.get("max_hp", 100))),
@@ -76,8 +53,6 @@ class MemoryService:
                 state=state,
                 source=self._adapter.__class__.__name__,
                 error=None,
-                field_errors=field_errors,
-                raw_values=data,
             )
         except Exception as error:  # noqa: BLE001 - memory adapter failures must degrade gracefully
             logger.warning("memory read failed: %s", error)
@@ -86,8 +61,6 @@ class MemoryService:
                 state=None,
                 source=self._adapter.__class__.__name__,
                 error=str(error),
-                field_errors=None,
-                raw_values=None,
             )
 
     def get_player_state(self) -> PlayerState:
