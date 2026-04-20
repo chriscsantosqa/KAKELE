@@ -18,6 +18,37 @@ These documents describe:
 - AI-assisted visual diagnosis
 - GO / NO-GO criteria
 
+### Memory-first capture (kakele.exe)
+
+O runtime next-gen agora suporta leitura direta de memória do processo `kakele.exe` (Windows), com fallback visual via OCR quando a memória não estiver disponível.
+
+Configure no perfil (`profiles/<nome>.json`):
+
+```json
+{
+  "memory": {
+    "enabled": true,
+    "prefer_for_healing": true,
+    "prefer_for_target": true,
+    "prefer_for_cavebot": true,
+    "process_name": "kakele.exe",
+    "addresses": {
+      "hp": "0x00000000",
+      "max_hp": "0x00000000",
+      "mp": "0x00000000",
+      "max_mp": "0x00000000",
+      "x": "0x00000000",
+      "y": "0x00000000",
+      "z": "0x00000000",
+      "has_target": "0x00000000",
+      "target_id": "0x00000000"
+    }
+  }
+}
+```
+
+> Substitua os endereços pelos offsets válidos da sua versão do client.
+
 | Descrição                                                                                          | Imagem |
 |----------------------------------------------------------------------------------------------------| --- |
 | Iniciando o Bot por um login específico de algum usuário previamente cadastrado no banco de dados. | ![start](comp_out/samples/login.png) |
