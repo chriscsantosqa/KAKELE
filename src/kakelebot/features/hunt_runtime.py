@@ -25,6 +25,8 @@ class HuntRuntime:
         "RIGHT": (1, 0),
     }
 
+    _MOVEMENT_HOLD_SECONDS = 0.035
+
     def __init__(self) -> None:
         self._last_waypoint_at: float | None = None
         self._waypoint_index = 0
@@ -121,10 +123,13 @@ class HuntRuntime:
         delta_x, delta_y = self._direction_delta(waypoint.direction)
         self._relative_x += delta_x
         self._relative_y += delta_y
+
         action = KeyAction(
             key=hotkey,
             reason=f"hunt-waypoint-{current_waypoint_index}-{waypoint.direction}",
+            hold_seconds=self._MOVEMENT_HOLD_SECONDS,
         )
+
         self._last_waypoint_at = now
         self._waypoint_repeat_progress += 1
         if self._waypoint_repeat_progress >= max(1, waypoint.repeats):
