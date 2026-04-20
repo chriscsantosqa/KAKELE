@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from kakelebot.core.calibration import CalibrationSnapshot
 from kakelebot.core.capture import CaptureService
+from kakelebot.core.game_state import GameStateService
 from kakelebot.core.memory import MemoryReadResult, MemoryService
 from kakelebot.core.config import HuntWaypoint
 from kakelebot.core.input import InputService, KeyAction
@@ -47,12 +48,14 @@ class HealingRuntime:
         healing_service: HealingService,
         input_service: InputService,
         memory_service: MemoryService | None = None,
+        game_state_service: GameStateService | None = None,
     ) -> None:
         self._capture = capture_service
         self._vision = vision_service
         self._healing = healing_service
         self._input = input_service
         self._memory = memory_service
+        self._game_state = game_state_service or GameStateService()
         self._hunt = HuntRuntime()
         self._time_provider = time.monotonic
         self._recent_target_observations: deque[tuple[bool, str]] = deque(maxlen=12)
@@ -103,7 +106,6 @@ class HealingRuntime:
         memory_process_name: str,
     ) -> HealingCycleResult:
 
-        # 🔥 NÃO BLOQUEIA MAIS POR WINDOW INACTIVE
         whole_window_image = self._capture.capture_window(window)
 
         life_image = self._crop(window, whole_window_image, snapshot.life_bar)
@@ -112,28 +114,26 @@ class HealingRuntime:
         life = self._vision.read_bar_value(life_image)
         mana = self._vision.read_bar_value(mana_image)
         memory_result = self._read_memory_if_enabled(memory_enabled)
-        memory_status = self._memory_status_text(memory_result, memory_enabled, memory_process_name)
-        data_source = "vision"
 
-        if (
-            memory_prefer_for_healing
-            and memory_result is not None
-            and memory_result.available
-            and memory_result.state is not None
-        ):
-            life = BarReading(
-                current=memory_result.state.hp,
-                maximum=memory_result.state.max_hp,
-                source_text="memory:hp",
-                confidence_ok=True,
-            )
-            mana = BarReading(
-                current=memory_result.state.mp,
-                maximum=memory_result.state.max_mp,
-                source_text="memory:mp",
-                confidence_ok=True,
-            )
-            data_source = "memory-heal"
+        target_img = self._crop(window, whole_window_image, snapshot.target_status)
+        target_preview = self._vision.build_target_preview(target_img)
+
+        game_state = self._game_state.build_state(
+            life_reading=life,
+            mana_reading=mana,
+            target_preview=target_preview,
+            memory_result=memory_result,
+            memory_enabled=memory_enabled,
+            memory_prefer_for_healing=memory_prefer_for_healing,
+            memory_prefer_for_target=memory_prefer_for_target,
+            memory_prefer_for_cavebot=memory_prefer_for_cavebot,
+            memory_process_name=memory_process_name,
+        )
+
+        life = game_state.vitals.life
+        mana = game_state.vitals.mana
+        memory_status = game_state.vitals.memory_status
+        data_source = game_state.navigation.data_source
 
         decision = self._healing.evaluate(
             life=life,
@@ -146,24 +146,9 @@ class HealingRuntime:
         suppressed: list[str] = []
         now = self._time_provider()
 
-        # --- TARGET ---
-        target_img = self._crop(window, whole_window_image, snapshot.target_status)
-        target_preview = self._vision.build_target_preview(target_img)
-
-        has_target = target_preview.has_target
-        target_text = target_preview.normalized_text
-        target_reason = "vision"
-
-        if (
-            memory_prefer_for_target
-            and memory_result is not None
-            and memory_result.available
-            and memory_result.state is not None
-        ):
-            has_target = memory_result.state.has_target
-            target_text = f"memory-target:{memory_result.state.target_id}"
-            target_reason = "memory"
-            data_source = "memory-target" if data_source == "vision" else "memory-hybrid"
+        has_target = game_state.target.has_target
+        target_text = game_state.target.target_text
+        target_reason = game_state.target.target_reason
 
         self._recent_target_observations.append((has_target, target_text))
 
@@ -173,17 +158,14 @@ class HealingRuntime:
             max_target_text_variants,
         )
 
-        # ✔️ CORREÇÃO: TARGET REAL
         valid_target = has_target and target_confirmed and not target_oscillating
 
-        # --- HEAL ---
         if decision.should_heal_life:
             actions.append(KeyAction(life_hotkey, "heal-life"))
 
         if decision.should_heal_mana:
             actions.append(KeyAction(mana_hotkey, "heal-mana"))
 
-        # --- BUFF / ATTACK ---
         haste_status = "disabled"
         if haste_enabled:
             haste_gate = max(haste_interval_seconds, haste_cooldown_seconds)
@@ -229,16 +211,8 @@ class HealingRuntime:
             else:
                 secondary_attack_status = "cooldown"
 
-        # --- HUNT ---
         hunt_status = "disabled"
-
-        player_position: tuple[int, int, int] | None = None
-        if memory_result is not None and memory_result.available and memory_result.state is not None:
-            player_position = (
-                memory_result.state.x,
-                memory_result.state.y,
-                memory_result.state.z,
-            )
+        player_position = game_state.navigation.player_position
 
         if hunt_enabled:
             if valid_target:
@@ -327,20 +301,6 @@ class HealingRuntime:
         if not enabled or self._memory is None:
             return None
         return self._memory.try_get_player_state()
-
-    @staticmethod
-    def _memory_status_text(
-        result: MemoryReadResult | None,
-        enabled: bool,
-        process_name: str,
-    ) -> str:
-        if not enabled:
-            return "memory-disabled"
-        if result is None:
-            return "memory-service-unavailable"
-        if result.available:
-            return f"memory-ok:{process_name}"
-        return f"memory-failed:{result.error or 'unknown'}"
 
     def _build_stuck_recovery_action(
         self,
