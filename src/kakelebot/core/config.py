@@ -98,6 +98,29 @@ class HuntSettings:
 
 
 @dataclass(slots=True)
+class MemoryAddressSettings:
+    hp: str = ""
+    max_hp: str = ""
+    mp: str = ""
+    max_mp: str = ""
+    x: str = ""
+    y: str = ""
+    z: str = ""
+    has_target: str = ""
+    target_id: str = ""
+
+
+@dataclass(slots=True)
+class MemorySettings:
+    enabled: bool = False
+    prefer_for_healing: bool = True
+    prefer_for_target: bool = True
+    prefer_for_cavebot: bool = True
+    process_name: str = "kakele.exe"
+    addresses: MemoryAddressSettings = field(default_factory=MemoryAddressSettings)
+
+
+@dataclass(slots=True)
 class NormalizedRegionSettings:
     left_ratio: float
     top_ratio: float
@@ -133,6 +156,7 @@ class ProfileSettings:
     combat: CombatSettings = field(default_factory=CombatSettings)
     healing_loop: HealingLoopSettings = field(default_factory=HealingLoopSettings)
     hunt: HuntSettings = field(default_factory=HuntSettings)
+    memory: MemorySettings = field(default_factory=MemorySettings)
     rois: RoiSettings = field(default_factory=RoiSettings)
 
 
@@ -348,6 +372,33 @@ def _load_hunt(raw: dict) -> HuntSettings:
     )
 
 
+def _load_memory_addresses(raw: dict) -> MemoryAddressSettings:
+    defaults = MemoryAddressSettings()
+    return MemoryAddressSettings(
+        hp=_coerce_str(raw.get("hp"), defaults.hp),
+        max_hp=_coerce_str(raw.get("max_hp"), defaults.max_hp),
+        mp=_coerce_str(raw.get("mp"), defaults.mp),
+        max_mp=_coerce_str(raw.get("max_mp"), defaults.max_mp),
+        x=_coerce_str(raw.get("x"), defaults.x),
+        y=_coerce_str(raw.get("y"), defaults.y),
+        z=_coerce_str(raw.get("z"), defaults.z),
+        has_target=_coerce_str(raw.get("has_target"), defaults.has_target),
+        target_id=_coerce_str(raw.get("target_id"), defaults.target_id),
+    )
+
+
+def _load_memory(raw: dict) -> MemorySettings:
+    defaults = MemorySettings()
+    return MemorySettings(
+        enabled=_coerce_bool(raw.get("enabled"), defaults.enabled),
+        prefer_for_healing=_coerce_bool(raw.get("prefer_for_healing"), defaults.prefer_for_healing),
+        prefer_for_target=_coerce_bool(raw.get("prefer_for_target"), defaults.prefer_for_target),
+        prefer_for_cavebot=_coerce_bool(raw.get("prefer_for_cavebot"), defaults.prefer_for_cavebot),
+        process_name=_coerce_str(raw.get("process_name"), defaults.process_name),
+        addresses=_load_memory_addresses(raw.get("addresses", {})),
+    )
+
+
 def load_profile(path: Path) -> ProfileSettings:
     if not path.exists():
         profile = ProfileSettings()
@@ -361,6 +412,7 @@ def load_profile(path: Path) -> ProfileSettings:
     combat = _load_combat(raw.get("combat", {}))
     healing_loop = _load_healing_loop(raw.get("healing_loop", {}))
     hunt = _load_hunt(raw.get("hunt", {}))
+    memory = _load_memory(raw.get("memory", {}))
     rois = _load_rois(raw.get("rois", {}))
 
     return ProfileSettings(
@@ -374,5 +426,6 @@ def load_profile(path: Path) -> ProfileSettings:
         combat=combat,
         healing_loop=healing_loop,
         hunt=hunt,
+        memory=memory,
         rois=rois,
     )
