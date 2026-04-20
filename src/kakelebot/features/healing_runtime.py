@@ -35,6 +35,7 @@ class HealingCycleResult:
     target_reason: str
     target_text: str
     hunt_status: str
+    current_section: str
     data_source: str
     memory_status: str
     player_position: tuple[int, int, int] | None
@@ -237,6 +238,7 @@ class HealingRuntime:
                 secondary_attack_status = "cooldown"
 
         hunt_status = "disabled"
+        current_section = "idle"
         player_position = game_state.navigation.player_position
         active_special_area = self._special_area_service.match(
             player_position=player_position,
@@ -268,6 +270,7 @@ class HealingRuntime:
                     now=self._time_provider(),
                 )
 
+                current_section = cycle.current_section
                 if cycle.action:
                     actions.append(cycle.action)
                 else:
@@ -297,6 +300,7 @@ class HealingRuntime:
             attack_status=attack_status,
             secondary_attack_status=secondary_attack_status,
             hunt_status=hunt_status,
+            current_section=current_section,
             has_target=target_evaluation.has_target,
             target_confirmed=target_evaluation.confirmed,
             target_oscillating=target_evaluation.oscillating,
