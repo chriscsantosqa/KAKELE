@@ -15,6 +15,7 @@ from kakelebot.core.config import ProfileSettings
 from kakelebot.core.vision import OcrPreview, TargetPreview, VisionService
 from kakelebot.core.window import WindowDiscoveryError, WindowInfo, WindowService
 from kakelebot.features.healing_loop import HealingLoopResult, HealingLoopRunner
+from kakelebot.features.healing_runtime import HealingCycleResult
 
 
 class SessionState(str, Enum):
@@ -75,6 +76,8 @@ class SessionController:
         self._last_result: SessionRunResult | None = None
         self._lock = RLock()
         self._cavebot_active = False
+        self._live_cycle_result: HealingCycleResult | None = None
+        self._live_cycles_completed = 0
 
     @property
     def status(self) -> SessionStatus:
@@ -90,6 +93,16 @@ class SessionController:
     def cavebot_active(self) -> bool:
         with self._lock:
             return self._cavebot_active
+
+    @property
+    def live_cycle_result(self) -> HealingCycleResult | None:
+        with self._lock:
+            return self._live_cycle_result
+
+    @property
+    def live_cycles_completed(self) -> int:
+        with self._lock:
+            return self._live_cycles_completed
 
     def pause(self) -> None:
         with self._lock:
@@ -125,6 +138,8 @@ class SessionController:
     ) -> SessionRunResult:
         with self._lock:
             self._cavebot_active = profile.hunt.enabled
+            self._live_cycle_result = None
+            self._live_cycles_completed = 0
             self._status = SessionStatus(SessionState.RUNNING, "healing bootstrap session started")
             self._last_result = None
 
@@ -159,6 +174,7 @@ class SessionController:
                 should_continue=self._should_continue,
                 is_paused=self._is_paused,
                 is_cavebot_active=self._is_cavebot_active,
+                on_cycle=self._on_cycle_update,
             )
 
             with self._lock:
@@ -301,3 +317,8 @@ class SessionController:
     def _is_cavebot_active(self) -> bool:
         with self._lock:
             return self._cavebot_active
+
+    def _on_cycle_update(self, cycle_result: HealingCycleResult, cycles_completed: int) -> None:
+        with self._lock:
+            self._live_cycle_result = cycle_result
+            self._live_cycles_completed = cycles_completed
