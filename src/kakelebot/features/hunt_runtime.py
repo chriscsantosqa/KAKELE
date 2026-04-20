@@ -46,35 +46,30 @@ class HuntRuntime:
         move_down_hotkey: str,
         move_left_hotkey: str,
         move_right_hotkey: str,
+        use_coordinate_navigation: bool,
+        coordinate_tolerance: int,
+        player_position: tuple[int, int, int] | None,
         waypoints: list[HuntWaypoint],
         now: float,
     ) -> HuntCycleAction:
         total_waypoints = len(waypoints)
         if not enabled:
             self._reset_if_route_changed(None)
-            return HuntCycleAction(
-                action=None,
-                status="disabled",
-                waypoint_index=-1,
-                total_waypoints=0,
-                relative_x=0,
-                relative_y=0,
-                completed_loops=0,
-            )
+            return HuntCycleAction(None, "disabled", -1, 0, 0, 0, 0)
         if not waypoints:
             self._reset_if_route_changed(tuple())
-            return HuntCycleAction(
-                action=None,
-                status="no-waypoints",
-                waypoint_index=-1,
-                total_waypoints=0,
-                relative_x=0,
-                relative_y=0,
-                completed_loops=0,
-            )
+            return HuntCycleAction(None, "no-waypoints", -1, 0, 0, 0, 0)
 
         route_signature = tuple(
-            (waypoint.direction, waypoint.repeats, waypoint.relative_x, waypoint.relative_y)
+            (
+                waypoint.direction,
+                waypoint.repeats,
+                waypoint.relative_x,
+                waypoint.relative_y,
+                waypoint.target_x,
+                waypoint.target_y,
+                waypoint.target_z,
+            )
             for waypoint in waypoints
         )
         self._reset_if_route_changed(route_signature)
@@ -102,6 +97,24 @@ class HuntRuntime:
 
         current_waypoint_index = self._waypoint_index
         waypoint = waypoints[current_waypoint_index]
+
+        if use_coordinate_navigation and player_position is not None and self._waypoint_has_coordinates(waypoint):
+            cycle = self._next_coordinate_action(
+                waypoint=waypoint,
+                current_waypoint_index=current_waypoint_index,
+                total_waypoints=total_waypoints,
+                coordinate_tolerance=coordinate_tolerance,
+                player_position=player_position,
+                move_up_hotkey=move_up_hotkey,
+                move_down_hotkey=move_down_hotkey,
+                move_left_hotkey=move_left_hotkey,
+                move_right_hotkey=move_right_hotkey,
+                loop_route=loop_route,
+                now=now,
+            )
+            if cycle is not None:
+                return cycle
+
         hotkey = self._direction_hotkey(
             waypoint.direction,
             move_up_hotkey=move_up_hotkey,
@@ -151,6 +164,92 @@ class HuntRuntime:
             completed_loops=self._completed_loops,
         )
 
+    def _next_coordinate_action(
+        self,
+        *,
+        waypoint: HuntWaypoint,
+        current_waypoint_index: int,
+        total_waypoints: int,
+        coordinate_tolerance: int,
+        player_position: tuple[int, int, int],
+        move_up_hotkey: str,
+        move_down_hotkey: str,
+        move_left_hotkey: str,
+        move_right_hotkey: str,
+        loop_route: bool,
+        now: float,
+    ) -> HuntCycleAction | None:
+        target_z = waypoint.target_z if waypoint.target_z is not None else player_position[2]
+        if target_z != player_position[2]:
+            return HuntCycleAction(
+                action=None,
+                status="z-mismatch",
+                waypoint_index=current_waypoint_index,
+                total_waypoints=total_waypoints,
+                relative_x=self._relative_x,
+                relative_y=self._relative_y,
+                completed_loops=self._completed_loops,
+            )
+
+        delta_x = (waypoint.target_x or 0) - player_position[0]
+        delta_y = (waypoint.target_y or 0) - player_position[1]
+        tolerance = max(0, coordinate_tolerance)
+
+        if abs(delta_x) <= tolerance and abs(delta_y) <= tolerance:
+            self._advance_waypoint_after_coordinate_match(loop_route=loop_route, total_waypoints=total_waypoints)
+            return HuntCycleAction(
+                action=None,
+                status="waypoint-reached",
+                waypoint_index=current_waypoint_index,
+                total_waypoints=total_waypoints,
+                relative_x=self._relative_x,
+                relative_y=self._relative_y,
+                completed_loops=self._completed_loops,
+            )
+
+        direction = self._direction_from_delta(delta_x=delta_x, delta_y=delta_y)
+        hotkey = self._direction_hotkey(
+            direction,
+            move_up_hotkey=move_up_hotkey,
+            move_down_hotkey=move_down_hotkey,
+            move_left_hotkey=move_left_hotkey,
+            move_right_hotkey=move_right_hotkey,
+        )
+        if not hotkey:
+            return HuntCycleAction(
+                action=None,
+                status="missing-direction-hotkey",
+                waypoint_index=current_waypoint_index,
+                total_waypoints=total_waypoints,
+                relative_x=self._relative_x,
+                relative_y=self._relative_y,
+                completed_loops=self._completed_loops,
+            )
+
+        self._last_waypoint_at = now
+        return HuntCycleAction(
+            action=KeyAction(
+                key=hotkey,
+                reason=f"hunt-coordinate-{current_waypoint_index}-{direction}",
+                hold_seconds=self._MOVEMENT_HOLD_SECONDS,
+            ),
+            status="coordinate-executed",
+            waypoint_index=current_waypoint_index,
+            total_waypoints=total_waypoints,
+            relative_x=self._relative_x,
+            relative_y=self._relative_y,
+            completed_loops=self._completed_loops,
+        )
+
+    def _advance_waypoint_after_coordinate_match(self, *, loop_route: bool, total_waypoints: int) -> None:
+        self._waypoint_index += 1
+        self._waypoint_repeat_progress = 0
+        if loop_route and self._waypoint_index >= total_waypoints:
+            self._waypoint_index = 0
+            self._relative_x = 0
+            self._relative_y = 0
+            self._completed_loops += 1
+
     def snapshot(self, *, total_waypoints: int, status: str = "snapshot") -> HuntCycleAction:
         current_index = self._waypoint_index if total_waypoints > 0 else -1
         if total_waypoints > 0 and current_index >= total_waypoints:
@@ -177,6 +276,10 @@ class HuntRuntime:
         self._completed_loops = 0
 
     @staticmethod
+    def _waypoint_has_coordinates(waypoint: HuntWaypoint) -> bool:
+        return waypoint.target_x is not None and waypoint.target_y is not None
+
+    @staticmethod
     def _direction_hotkey(
         direction: str,
         *,
@@ -197,3 +300,9 @@ class HuntRuntime:
     @classmethod
     def _direction_delta(cls, direction: str) -> tuple[int, int]:
         return cls._DELTAS[direction.strip().upper()]
+
+    @staticmethod
+    def _direction_from_delta(*, delta_x: int, delta_y: int) -> str:
+        if abs(delta_x) >= abs(delta_y):
+            return "RIGHT" if delta_x > 0 else "LEFT"
+        return "DOWN" if delta_y > 0 else "UP"
