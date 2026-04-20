@@ -273,6 +273,7 @@ class ModernMainWindow(MainWindow):
 
         overview_tab = self._create_scrollable_tab(notebook, "Overview")
         intelligence_tab = self._create_scrollable_tab(notebook, "Intelligence")
+        memory_tab = self._create_scrollable_tab(notebook, "Memory")
         logs_frame = ttk.Frame(notebook, style="App.TFrame")
         notebook.add(logs_frame, text="Logs")
 
@@ -281,6 +282,7 @@ class ModernMainWindow(MainWindow):
         self._build_preview_panel(overview_tab)
         self._build_ai_analysis_panel(intelligence_tab)
         self._build_snapshot_review(intelligence_tab)
+        self._build_memory_overview(memory_tab)
         self._build_output(logs_frame)
         self._style_output_widget()
 
