@@ -10,6 +10,7 @@ For the current next-generation bootstrap flow, use these documents first:
 - `docs/FIRST_USE_CHECKLIST.md`
 - `docs/GPT_VISION_SETUP.md`
 - `docs/USAGE_READINESS_AND_GPT_VISION_AGENT.md`
+- `docs/NEXT_STEP_MEMORY_ENABLEMENT.md`
 
 These documents describe:
 - controlled first usage
