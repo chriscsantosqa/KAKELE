@@ -60,6 +60,9 @@ class CombatSettings:
     secondary_attack_cooldown_seconds: float = 2.0
     secondary_attack_after_primary_only: bool = True
     secondary_attack_combo_window_seconds: float = 1.0
+    secondary_attack_allowed_target_texts: list[str] = field(default_factory=list)
+    secondary_attack_blocked_target_texts: list[str] = field(default_factory=list)
+    secondary_attack_require_target_text_match: bool = False
     target_confirmation_cycles: int = 2
     target_stability_window: int = 4
     max_target_text_variants: int = 2
@@ -320,6 +323,16 @@ def _load_combat(raw: dict) -> CombatSettings:
         ),
         secondary_attack_combo_window_seconds=_coerce_float(
             raw.get("secondary_attack_combo_window_seconds"), defaults.secondary_attack_combo_window_seconds
+        ),
+        secondary_attack_allowed_target_texts=_coerce_str_list(
+            raw.get("secondary_attack_allowed_target_texts")
+        ),
+        secondary_attack_blocked_target_texts=_coerce_str_list(
+            raw.get("secondary_attack_blocked_target_texts")
+        ),
+        secondary_attack_require_target_text_match=_coerce_bool(
+            raw.get("secondary_attack_require_target_text_match"),
+            defaults.secondary_attack_require_target_text_match,
         ),
         target_confirmation_cycles=_coerce_int(
             raw.get("target_confirmation_cycles"), defaults.target_confirmation_cycles
