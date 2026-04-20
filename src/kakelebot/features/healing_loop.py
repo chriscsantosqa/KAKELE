@@ -132,6 +132,11 @@ class HealingLoopRunner:
                 hunt_move_right_hotkey=profile.hunt.move_right_hotkey,
                 hunt_waypoints=profile.hunt.waypoints,
                 window_is_active=window.is_active,
+                memory_enabled=profile.memory.enabled,
+                memory_prefer_for_healing=profile.memory.prefer_for_healing,
+                memory_prefer_for_target=profile.memory.prefer_for_target,
+                memory_prefer_for_cavebot=profile.memory.prefer_for_cavebot,
+                memory_process_name=profile.memory.process_name,
             )
             cycles_completed += 1
             cycle_index += 1
