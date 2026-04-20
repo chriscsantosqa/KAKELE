@@ -22,7 +22,7 @@ class PyDirectInputAdapter:
         "RIGHT": "right",
     }
 
-    def press(self, key: str) -> None:
+    def press(self, key: str, hold_seconds: float = 0.0) -> None:
         if pydirectinput is None:
             raise RuntimeError("pydirectinput is not installed.")
 
@@ -32,9 +32,13 @@ class PyDirectInputAdapter:
         self._prepare_runtime()
         if hasattr(pydirectinput, "keyDown") and hasattr(pydirectinput, "keyUp"):
             pydirectinput.keyDown(normalized_key)
+            if hold_seconds > 0:
+                time.sleep(hold_seconds)
             pydirectinput.keyUp(normalized_key)
             return
         pydirectinput.press(normalized_key)
+        if hold_seconds > 0:
+            time.sleep(hold_seconds)
 
     def press_many(self, keys: list[str], inter_key_delay_seconds: float = 0.0) -> None:
         if pydirectinput is None:
