@@ -6,12 +6,12 @@ from dataclasses import dataclass
 
 from kakelebot.core.calibration import CalibrationSnapshot
 from kakelebot.core.capture import CaptureService
+from kakelebot.core.config import HuntWaypoint
 from kakelebot.core.input import InputService, KeyAction
 from kakelebot.core.vision import BarReading, VisionService
 from kakelebot.core.window import WindowInfo
 from kakelebot.features.healing import HealingDecision, HealingService
-from kakelebot.core.config import HuntWaypoint
-from kakelebot.features.hunt_runtime import HuntRuntime
+from kakelebot.features.hunt_runtime import HuntCycleAction, HuntRuntime
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,7 +163,9 @@ class HealingRuntime:
             if secondary_attack_enabled:
                 secondary_attack_status = "deprioritized-due-critical-life"
             if hunt_enabled:
-                hunt_status = "deprioritized-due-critical-life"
+                hunt_status = self._format_hunt_status(
+                    self._hunt.snapshot(total_waypoints=len(hunt_waypoints), status="deprioritized-due-critical-life")
+                )
             if immediate_actions:
                 self._input.execute_many(immediate_actions, self._MULTI_ACTION_DELAY_SECONDS)
                 executed_actions.extend(immediate_actions)
@@ -216,7 +218,7 @@ class HealingRuntime:
                 haste_cooldown_seconds=haste_cooldown_seconds,
                 queued_actions=immediate_actions,
             )
-         
+
         if hunt_enabled:
             hunt_status = self._queue_hunt(
                 loop_route=hunt_loop_route,
@@ -232,7 +234,7 @@ class HealingRuntime:
                 suppressed_actions=suppressed_actions,
             )
         else:
-            hunt_status = "disabled" 
+            hunt_status = "disabled"
 
         if immediate_actions:
             self._input.execute_many(immediate_actions, self._MULTI_ACTION_DELAY_SECONDS)
@@ -431,7 +433,9 @@ class HealingRuntime:
     ) -> str:
         if has_target:
             suppressed_actions.append("hunt-paused-during-target")
-            return "paused-during-target"
+            return self._format_hunt_status(
+                self._hunt.snapshot(total_waypoints=len(waypoints), status="paused-during-target")
+            )
 
         hunt_cycle_action = self._hunt.next_action(
             enabled=True,
@@ -450,8 +454,19 @@ class HealingRuntime:
         else:
             suppressed_actions.append(f"hunt-{hunt_cycle_action.status}")
 
-        return hunt_cycle_action.status
-    
+        return self._format_hunt_status(hunt_cycle_action)
+
+    @staticmethod
+    def _format_hunt_status(hunt_cycle_action: HuntCycleAction) -> str:
+        if hunt_cycle_action.total_waypoints <= 0 or hunt_cycle_action.waypoint_index < 0:
+            return hunt_cycle_action.status
+        return (
+            f"{hunt_cycle_action.status} | "
+            f"waypoint={hunt_cycle_action.waypoint_index + 1}/{hunt_cycle_action.total_waypoints} | "
+            f"pos=({hunt_cycle_action.relative_x}, {hunt_cycle_action.relative_y}) | "
+            f"loops={hunt_cycle_action.completed_loops}"
+        )
+
     def _can_execute_life(self, cooldown_seconds: float) -> bool:
         if self._last_life_action_at is None:
             return True

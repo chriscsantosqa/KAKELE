@@ -15,6 +15,8 @@ class SessionActionsPanel:
         on_analyze_current_screen_with_ai,
         on_adopt_current_window_baseline,
         on_save_calibration_snapshot,
+        on_start_cavebot=None,
+        on_stop_cavebot=None,
     ):
         frame = ttk.LabelFrame(parent, text="Session", padding=12)
         frame.pack(fill="x", pady=(0, 12))
@@ -24,6 +26,12 @@ class SessionActionsPanel:
         ttk.Button(frame, text="Pause", command=on_pause).pack(fill="x", pady=(0, 6))
         ttk.Button(frame, text="Resume", command=on_resume).pack(fill="x", pady=(0, 6))
         ttk.Button(frame, text="Stop", command=on_stop).pack(fill="x", pady=(0, 6))
+
+        if on_start_cavebot is not None:
+            ttk.Button(frame, text="Start cavebot", command=on_start_cavebot).pack(fill="x", pady=(0, 6))
+        if on_stop_cavebot is not None:
+            ttk.Button(frame, text="Stop cavebot", command=on_stop_cavebot).pack(fill="x", pady=(0, 6))
+
         ttk.Button(frame, text="Refresh ROI/OCR preview", command=on_refresh_preview).pack(fill="x", pady=(0, 6))
         ttk.Button(
             frame,

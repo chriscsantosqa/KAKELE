@@ -40,6 +40,8 @@ class HealingLoopRunner:
         profile: ProfileSettings,
         should_continue: Callable[[], bool] | None = None,
         is_paused: Callable[[], bool] | None = None,
+        is_cavebot_active: Callable[[], bool] | None = None,
+        on_cycle: Callable[[HealingCycleResult, int], None] | None = None,
     ) -> HealingLoopResult:
         last_cycle: HealingCycleResult | None = None
         cycles_completed = 0
@@ -93,6 +95,9 @@ class HealingLoopRunner:
                 continue
 
             snapshot = self._calibration_service.build_snapshot(window, profile)
+            runtime_hunt_enabled = profile.hunt.enabled
+            if is_cavebot_active is not None:
+                runtime_hunt_enabled = runtime_hunt_enabled and is_cavebot_active()
 
             last_cycle = self._healing_runtime.execute_cycle(
                 window=window,
@@ -118,7 +123,7 @@ class HealingLoopRunner:
                 mana_threshold_percent=profile.thresholds.mana_percent,
                 life_cooldown_seconds=profile.healing_loop.life_cooldown_seconds,
                 mana_cooldown_seconds=profile.healing_loop.mana_cooldown_seconds,
-                hunt_enabled=profile.hunt.enabled,
+                hunt_enabled=runtime_hunt_enabled,
                 hunt_loop_route=profile.hunt.loop_route,
                 hunt_waypoint_interval_seconds=profile.hunt.waypoint_interval_seconds,
                 hunt_move_up_hotkey=profile.hunt.move_up_hotkey,
@@ -130,6 +135,9 @@ class HealingLoopRunner:
             )
             cycles_completed += 1
             cycle_index += 1
+
+            if on_cycle is not None:
+                on_cycle(last_cycle, cycles_completed)
 
             if last_cycle.life_reading is None and last_cycle.mana_reading is None:
                 consecutive_ocr_failures += 1

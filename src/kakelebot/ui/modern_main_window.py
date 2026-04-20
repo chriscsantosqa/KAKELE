@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import threading
 import tkinter as tk
 from tkinter import ttk
 
 from kakelebot.ui.main_window import MainWindow
 from kakelebot.ui.scrollable_frame import ScrollableFrame
+from kakelebot.ui.session_actions_panel import SessionActionsPanel
 
 
 class ModernMainWindow(MainWindow):
@@ -19,6 +21,7 @@ class ModernMainWindow(MainWindow):
     _SUCCESS = "#55d6a8"
 
     def _build_layout(self) -> None:
+        self._ensure_cavebot_overview_vars()
         self._configure_theme()
         self.root.configure(bg=self._BG)
         self.root.geometry("1540x980")
@@ -29,6 +32,14 @@ class ModernMainWindow(MainWindow):
 
         self._build_header(container)
         self._build_body(container)
+
+    def _ensure_cavebot_overview_vars(self) -> None:
+        self._cavebot_runtime_var = tk.StringVar(value="cavebot runtime: inactive")
+        self._cavebot_profile_var = tk.StringVar(value="cavebot profile: disabled")
+        self._cavebot_status_var = tk.StringVar(value="cavebot status: -")
+        self._cavebot_waypoint_var = tk.StringVar(value="cavebot waypoint: -")
+        self._cavebot_position_var = tk.StringVar(value="cavebot position: -")
+        self._cavebot_loops_var = tk.StringVar(value="cavebot loops: -")
 
     def _configure_theme(self) -> None:
         style = ttk.Style(self.root)
@@ -264,6 +275,7 @@ class ModernMainWindow(MainWindow):
         logs_frame = ttk.Frame(notebook, style="App.TFrame")
         notebook.add(logs_frame, text="Logs")
 
+        self._build_cavebot_overview(overview_tab)
         self._build_diagnostics(overview_tab)
         self._build_preview_panel(overview_tab)
         self._build_ai_analysis_panel(intelligence_tab)
@@ -271,10 +283,138 @@ class ModernMainWindow(MainWindow):
         self._build_output(logs_frame)
         self._style_output_widget()
 
+    def _build_cavebot_overview(self, parent) -> None:
+        frame = ttk.LabelFrame(parent, text="Cavebot overview", padding=12)
+        frame.pack(fill="x", pady=(0, 12))
+
+        for variable in (
+            self._cavebot_runtime_var,
+            self._cavebot_profile_var,
+            self._cavebot_status_var,
+            self._cavebot_waypoint_var,
+            self._cavebot_position_var,
+            self._cavebot_loops_var,
+        ):
+            ttk.Label(
+                frame,
+                textvariable=variable,
+                wraplength=860,
+                justify="left",
+            ).pack(anchor="w", pady=2)
+
     def _create_scrollable_tab(self, notebook: ttk.Notebook, title: str) -> ttk.Frame:
         scrollable = ScrollableFrame(notebook)
         notebook.add(scrollable, text=title)
         return scrollable.content
+
+    def _build_actions(self, parent) -> None:
+        SessionActionsPanel(
+            parent=parent,
+            on_start=self._on_start,
+            on_pause=self._on_pause,
+            on_resume=self._on_resume,
+            on_stop=self._on_stop,
+            on_refresh_preview=self._on_refresh_preview,
+            on_analyze_current_screen_with_ai=self._on_analyze_current_screen_with_ai,
+            on_adopt_current_window_baseline=self._on_adopt_current_window_baseline,
+            on_save_calibration_snapshot=self._on_save_calibration_snapshot,
+            on_start_cavebot=self._on_start_cavebot,
+            on_stop_cavebot=self._on_stop_cavebot,
+        )
+
+    def _on_start(self) -> None:
+        if self._worker is not None and self._worker.is_alive():
+            self._append_output("Start ignored: session already running.\n")
+            return
+        try:
+            runtime_profile = self._build_runtime_profile_from_form()
+            if runtime_profile.hunt.enabled and not runtime_profile.healing_loop.continuous_mode:
+                runtime_profile.healing_loop.continuous_mode = True
+                self._append_output(
+                    "Continuous mode auto-enabled because cavebot is active.\n"
+                )
+            if runtime_profile.hunt.enabled:
+                self._append_output(
+                    f"Cavebot armed on session start: waypoints={len(runtime_profile.hunt.waypoints)} | loop_route={runtime_profile.hunt.loop_route}\n"
+                )
+            else:
+                self._append_output("Cavebot disabled for this session.\n")
+            self._append_output("Starting session...\n")
+            self._worker = threading.Thread(
+                target=self._run_session,
+                args=(runtime_profile,),
+                daemon=True,
+            )
+            self._worker.start()
+        except ValueError as error:
+            self._append_output(f"Start failed: {error}\n")
+
+    def _on_start_cavebot(self) -> None:
+        if self._worker is None or not self._worker.is_alive():
+            self._append_output("Start cavebot ignored: session is not running.\n")
+            return
+        self._session_controller.start_cavebot()
+        self._append_output("Cavebot started during active session.\n")
+
+    def _on_stop_cavebot(self) -> None:
+        if self._worker is None or not self._worker.is_alive():
+            self._append_output("Stop cavebot ignored: session is not running.\n")
+            return
+        self._session_controller.stop_cavebot()
+        self._append_output("Cavebot stopped during active session.\n")
+
+    def _refresh_view(self) -> None:
+        super()._refresh_view()
+        self._apply_cavebot_overview()
+        live_cycles_completed = self._session_controller.live_cycles_completed
+        if live_cycles_completed > 0 and self._worker is not None and self._worker.is_alive():
+            self._cycles_var.set(f"cycles: {live_cycles_completed}")
+
+    def _apply_cavebot_overview(self) -> None:
+        live_cycle = self._session_controller.live_cycle_result
+        if live_cycle is None and self._last_session_result is not None and self._last_session_result.healing_loop_result is not None:
+            live_cycle = self._last_session_result.healing_loop_result.last_cycle
+
+        self._cavebot_runtime_var.set(
+            f"cavebot runtime: {'active' if self._session_controller.cavebot_active else 'inactive'}"
+        )
+        self._cavebot_profile_var.set(
+            f"cavebot profile: enabled={self._hunt_enabled_var.get()} | loop_route={self._hunt_loop_route_var.get()} | waypoints={len(self._hunt_waypoints)}"
+        )
+
+        if live_cycle is None:
+            self._cavebot_status_var.set("cavebot status: -")
+            self._cavebot_waypoint_var.set("cavebot waypoint: -")
+            self._cavebot_position_var.set("cavebot position: -")
+            self._cavebot_loops_var.set("cavebot loops: -")
+            return
+
+        status, waypoint, position, loops = self._parse_hunt_status(live_cycle.hunt_status)
+        self._cavebot_status_var.set(f"cavebot status: {status}")
+        self._cavebot_waypoint_var.set(f"cavebot waypoint: {waypoint}")
+        self._cavebot_position_var.set(f"cavebot position: {position}")
+        self._cavebot_loops_var.set(f"cavebot loops: {loops}")
+
+    @staticmethod
+    def _parse_hunt_status(raw: str) -> tuple[str, str, str, str]:
+        if not raw:
+            return "-", "-", "-", "-"
+
+        parts = [part.strip() for part in raw.split("|")]
+        status = parts[0] if parts else raw
+        waypoint = "-"
+        position = "-"
+        loops = "-"
+
+        for part in parts[1:]:
+            if part.startswith("waypoint="):
+                waypoint = part.removeprefix("waypoint=").strip()
+            elif part.startswith("pos="):
+                position = part.removeprefix("pos=").strip()
+            elif part.startswith("loops="):
+                loops = part.removeprefix("loops=").strip()
+
+        return status, waypoint, position, loops
 
     def _build_output(self, parent) -> None:
         shell = ttk.Frame(parent, style="CardInner.TFrame", padding=12)
