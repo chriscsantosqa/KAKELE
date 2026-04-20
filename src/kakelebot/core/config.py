@@ -92,6 +92,9 @@ class HuntWaypoint:
     target_x: int | None = None
     target_y: int | None = None
     target_z: int | None = None
+    waypoint_type: str = "walk"
+    label: str = ""
+    waypoint_range: int = 1
 
 
 @dataclass(slots=True)
@@ -415,6 +418,9 @@ def _load_hunt(raw: dict) -> HuntSettings:
                     target_x=_coerce_optional_int(item.get("target_x")),
                     target_y=_coerce_optional_int(item.get("target_y")),
                     target_z=_coerce_optional_int(item.get("target_z")),
+                    waypoint_type=_coerce_str(item.get("waypoint_type"), "walk"),
+                    label=_coerce_str(item.get("label"), ""),
+                    waypoint_range=max(1, _coerce_int(item.get("waypoint_range"), 1)),
                 )
             )
     return HuntSettings(
