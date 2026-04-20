@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from kakelebot.core.calibration import CalibrationSnapshot
 from kakelebot.core.capture import CaptureService
-from kakelebot.core.memory import MemoryReadResult, MemoryService, PlayerState
+from kakelebot.core.memory import MemoryReadResult, MemoryService
 from kakelebot.core.config import HuntWaypoint
 from kakelebot.core.input import InputService, KeyAction
 from kakelebot.core.vision import BarReading, VisionService
@@ -34,7 +34,6 @@ class HealingCycleResult:
     data_source: str
     memory_status: str
     player_position: tuple[int, int, int] | None
-    memory_player_state: PlayerState | None
 
 
 class HealingRuntime:
@@ -295,7 +294,6 @@ class HealingRuntime:
             data_source=data_source,
             memory_status=memory_status,
             player_position=player_position,
-            memory_player_state=memory_result.state if memory_result is not None else None,
         )
 
     def _crop(self, window, img, region):
