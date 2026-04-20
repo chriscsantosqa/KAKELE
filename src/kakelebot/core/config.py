@@ -89,6 +89,9 @@ class HuntWaypoint:
     repeats: int = 1
     relative_x: int = 0
     relative_y: int = 0
+    target_x: int | None = None
+    target_y: int | None = None
+    target_z: int | None = None
 
 
 @dataclass(slots=True)
@@ -100,6 +103,8 @@ class HuntSettings:
     move_down_hotkey: str = "DOWN"
     move_left_hotkey: str = "LEFT"
     move_right_hotkey: str = "RIGHT"
+    use_coordinate_navigation: bool = False
+    coordinate_tolerance: int = 0
     waypoints: list[HuntWaypoint] = field(default_factory=list)
 
 
@@ -216,6 +221,15 @@ def _coerce_int(value, fallback: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return fallback
+
+
+def _coerce_optional_int(value) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _coerce_bool(value, fallback: bool) -> bool:
@@ -398,6 +412,9 @@ def _load_hunt(raw: dict) -> HuntSettings:
                     repeats=max(1, _coerce_int(item.get("repeats"), 1)),
                     relative_x=_coerce_int(item.get("relative_x"), 0),
                     relative_y=_coerce_int(item.get("relative_y"), 0),
+                    target_x=_coerce_optional_int(item.get("target_x")),
+                    target_y=_coerce_optional_int(item.get("target_y")),
+                    target_z=_coerce_optional_int(item.get("target_z")),
                 )
             )
     return HuntSettings(
@@ -410,6 +427,10 @@ def _load_hunt(raw: dict) -> HuntSettings:
         move_down_hotkey=_coerce_str(raw.get("move_down_hotkey"), defaults.move_down_hotkey),
         move_left_hotkey=_coerce_str(raw.get("move_left_hotkey"), defaults.move_left_hotkey),
         move_right_hotkey=_coerce_str(raw.get("move_right_hotkey"), defaults.move_right_hotkey),
+        use_coordinate_navigation=_coerce_bool(
+            raw.get("use_coordinate_navigation"), defaults.use_coordinate_navigation
+        ),
+        coordinate_tolerance=max(0, _coerce_int(raw.get("coordinate_tolerance"), defaults.coordinate_tolerance)),
         waypoints=waypoints,
     )
 
