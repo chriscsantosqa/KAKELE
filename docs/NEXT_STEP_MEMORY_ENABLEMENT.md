@@ -41,12 +41,6 @@ Saída esperada:
 - `memory check: OK`
 - valores de hp/mp/posição/target sendo impressos.
 
-### Formatos de endereço aceitos
-
-- absoluto: `0x12345678`
-- base de módulo: `kakele.exe+0x123456`
-- ponteiro em cadeia: `kakele.exe+0x123456,0x10,0x20`
-
 ## 3) Validar no GUI
 
 Inicie:

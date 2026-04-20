@@ -49,15 +49,6 @@ Configure no perfil (`profiles/<nome>.json`):
 ```
 
 > Substitua os endereços pelos offsets válidos da sua versão do client.
->
-> Formatos suportados:
-> - endereço absoluto: `0x12345678`
-> - base de módulo: `kakele.exe+0x123456`
-> - cadeia de ponteiros: `kakele.exe+0x123456,0x10,0x20`
-
-Validação rápida com o jogo aberto:
-
-`kakelebot-memory-check`
 
 | Descrição                                                                                          | Imagem |
 |----------------------------------------------------------------------------------------------------| --- |
