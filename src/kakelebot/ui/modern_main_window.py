@@ -5,6 +5,7 @@ from tkinter import ttk
 
 from kakelebot.ui.main_window import MainWindow
 from kakelebot.ui.scrollable_frame import ScrollableFrame
+from kakelebot.ui.session_actions_panel import SessionActionsPanel
 
 
 class ModernMainWindow(MainWindow):
@@ -275,6 +276,62 @@ class ModernMainWindow(MainWindow):
         scrollable = ScrollableFrame(notebook)
         notebook.add(scrollable, text=title)
         return scrollable.content
+
+    def _build_actions(self, parent) -> None:
+        SessionActionsPanel(
+            parent=parent,
+            on_start=self._on_start,
+            on_pause=self._on_pause,
+            on_resume=self._on_resume,
+            on_stop=self._on_stop,
+            on_refresh_preview=self._on_refresh_preview,
+            on_analyze_current_screen_with_ai=self._on_analyze_current_screen_with_ai,
+            on_adopt_current_window_baseline=self._on_adopt_current_window_baseline,
+            on_save_calibration_snapshot=self._on_save_calibration_snapshot,
+            on_start_cavebot=self._on_start_cavebot,
+            on_stop_cavebot=self._on_stop_cavebot,
+        )
+
+    def _on_start(self) -> None:
+        if self._worker is not None and self._worker.is_alive():
+            self._append_output("Start ignored: session already running.\n")
+            return
+        try:
+            runtime_profile = self._build_runtime_profile_from_form()
+            if runtime_profile.hunt.enabled and not runtime_profile.healing_loop.continuous_mode:
+                runtime_profile.healing_loop.continuous_mode = True
+                self._append_output(
+                    "Continuous mode auto-enabled because cavebot is active.\n"
+                )
+            if runtime_profile.hunt.enabled:
+                self._append_output(
+                    f"Cavebot armed on session start: waypoints={len(runtime_profile.hunt.waypoints)} | loop_route={runtime_profile.hunt.loop_route}\n"
+                )
+            else:
+                self._append_output("Cavebot disabled for this session.\n")
+            self._append_output("Starting session...\n")
+            self._worker = threading.Thread(
+                target=self._run_session,
+                args=(runtime_profile,),
+                daemon=True,
+            )
+            self._worker.start()
+        except ValueError as error:
+            self._append_output(f"Start failed: {error}\n")
+
+    def _on_start_cavebot(self) -> None:
+        if self._worker is None or not self._worker.is_alive():
+            self._append_output("Start cavebot ignored: session is not running.\n")
+            return
+        self._session_controller.start_cavebot()
+        self._append_output("Cavebot started during active session.\n")
+
+    def _on_stop_cavebot(self) -> None:
+        if self._worker is None or not self._worker.is_alive():
+            self._append_output("Stop cavebot ignored: session is not running.\n")
+            return
+        self._session_controller.stop_cavebot()
+        self._append_output("Cavebot stopped during active session.\n")
 
     def _build_output(self, parent) -> None:
         shell = ttk.Frame(parent, style="CardInner.TFrame", padding=12)
