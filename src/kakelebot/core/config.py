@@ -63,6 +63,9 @@ class CombatSettings:
     target_confirmation_cycles: int = 2
     target_stability_window: int = 4
     max_target_text_variants: int = 2
+    allowed_target_texts: list[str] = field(default_factory=list)
+    blocked_target_texts: list[str] = field(default_factory=list)
+    require_target_text_match: bool = False
 
 
 @dataclass(slots=True)
@@ -326,6 +329,11 @@ def _load_combat(raw: dict) -> CombatSettings:
         ),
         max_target_text_variants=_coerce_int(
             raw.get("max_target_text_variants"), defaults.max_target_text_variants
+        ),
+        allowed_target_texts=_coerce_str_list(raw.get("allowed_target_texts")),
+        blocked_target_texts=_coerce_str_list(raw.get("blocked_target_texts")),
+        require_target_text_match=_coerce_bool(
+            raw.get("require_target_text_match"), defaults.require_target_text_match
         ),
     )
 
