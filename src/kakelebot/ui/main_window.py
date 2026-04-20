@@ -189,6 +189,13 @@ class MainWindow:
         self._diag_terminated_var = tk.StringVar(value="terminated early: -")
         self._diag_termination_reason_var = tk.StringVar(value="termination reason: -")
         self._diag_fail_safe_var = tk.StringVar(value="fail-safe triggered: -")
+        self._memory_status_var = tk.StringVar(value="memory status: -")
+        self._memory_source_var = tk.StringVar(value="memory source: -")
+        self._memory_hp_var = tk.StringVar(value="hp: -")
+        self._memory_mp_var = tk.StringVar(value="mp: -")
+        self._memory_position_var = tk.StringVar(value="position: -")
+        self._memory_target_var = tk.StringVar(value="target: -")
+        self._memory_level_var = tk.StringVar(value="level/exp: -")
 
         self._preview_window_var = tk.StringVar(value="window: -")
         self._preview_profile_resolution_var = tk.StringVar(value="profile resolution: -")
@@ -454,6 +461,26 @@ class MainWindow:
         self._output.insert(tk.END, "UI initialized.\n")
         self._output.configure(state=tk.DISABLED)
 
+    def _build_memory_overview(self, parent: ttk.Frame) -> None:
+        frame = ttk.LabelFrame(parent, text="Memory capture (kakele.exe)", padding=12)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        for variable in (
+            self._memory_status_var,
+            self._memory_source_var,
+            self._memory_hp_var,
+            self._memory_mp_var,
+            self._memory_position_var,
+            self._memory_target_var,
+            self._memory_level_var,
+        ):
+            ttk.Label(
+                frame,
+                textvariable=variable,
+                wraplength=860,
+                justify="left",
+            ).pack(anchor="w", pady=2)
+
     def _schedule_refresh(self) -> None:
         self._refresh_view()
         self._refresh_hunt_recording_status()
@@ -481,6 +508,46 @@ class MainWindow:
                 self._cycles_var.set(self._cycles_var.get() + " | paused")
         else:
             self._cycles_var.set(self._cycles_var.get().replace(" | paused", ""))
+        self._apply_memory_overview()
+
+    def _apply_memory_overview(self) -> None:
+        live_cycle = self._session_controller.live_cycle_result
+        if (
+            live_cycle is None
+            and self._last_session_result is not None
+            and self._last_session_result.healing_loop_result is not None
+        ):
+            live_cycle = self._last_session_result.healing_loop_result.last_cycle
+
+        if live_cycle is None:
+            self._memory_status_var.set("memory status: -")
+            self._memory_source_var.set("memory source: -")
+            self._memory_hp_var.set("hp: -")
+            self._memory_mp_var.set("mp: -")
+            self._memory_position_var.set("position: -")
+            self._memory_target_var.set("target: -")
+            self._memory_level_var.set("level/exp: -")
+            return
+
+        state = live_cycle.memory_player_state
+        self._memory_status_var.set(f"memory status: {live_cycle.memory_status}")
+        self._memory_source_var.set(f"memory source: {live_cycle.data_source}")
+
+        if state is None:
+            self._memory_hp_var.set("hp: unavailable")
+            self._memory_mp_var.set("mp: unavailable")
+            self._memory_position_var.set("position: unavailable")
+            self._memory_target_var.set("target: unavailable")
+            self._memory_level_var.set("level/exp: unavailable")
+            return
+
+        self._memory_hp_var.set(f"hp: {state.hp}/{state.max_hp}")
+        self._memory_mp_var.set(f"mp: {state.mp}/{state.max_mp}")
+        self._memory_position_var.set(f"position: ({state.x}, {state.y}, {state.z})")
+        self._memory_target_var.set(
+            f"target: has_target={state.has_target} | target_id={state.target_id}"
+        )
+        self._memory_level_var.set(f"level/exp: {state.level} / {state.exp}")
 
     def _refresh_profile_list(self) -> None:
         if self._profile_manager is None:
@@ -558,7 +625,11 @@ class MainWindow:
         self._diag_target_oscillating_var.set(f"target oscillating: {last_cycle.target_oscillating}")
         self._diag_target_reason_var.set(
             "target reason: "
-            + (f"{last_cycle.target_reason} | text='{last_cycle.target_text or 'empty'}'")
+            + (
+                f"{last_cycle.target_reason} | text='{last_cycle.target_text or 'empty'}' "
+                f"| source={last_cycle.data_source} | memory={last_cycle.memory_status} "
+                f"| pos={last_cycle.player_position}"
+            )
         )
         self._diag_terminated_var.set(
             "terminated early: "
