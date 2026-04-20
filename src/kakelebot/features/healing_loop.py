@@ -139,6 +139,7 @@ class HealingLoopRunner:
                 hunt_use_coordinate_navigation=profile.hunt.use_coordinate_navigation,
                 hunt_coordinate_tolerance=profile.hunt.coordinate_tolerance,
                 hunt_waypoints=profile.hunt.waypoints,
+                hunt_special_areas=profile.hunt.special_areas,
                 window_is_active=window.is_active,
                 memory_enabled=profile.memory.enabled,
                 memory_prefer_for_healing=profile.memory.prefer_for_healing,
