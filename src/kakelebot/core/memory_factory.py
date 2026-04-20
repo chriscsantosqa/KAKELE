@@ -8,6 +8,7 @@ from kakelebot.core.memory import MemoryService
 from kakelebot.infra.windows_process_memory_adapter import (
     WindowsProcessMemoryAdapter,
     build_address_map,
+    enumerate_running_processes,
 )
 
 
@@ -32,3 +33,16 @@ def build_memory_service(memory_settings: MemorySettings) -> MemoryService | Non
         addresses=address_map,
     )
     return MemoryService(adapter)
+
+
+def list_running_process_names() -> list[str]:
+    if os.name != "nt":
+        return []
+
+    try:
+        names = {name for _, name in enumerate_running_processes() if name}
+    except RuntimeError as error:
+        logger.warning("failed to enumerate running processes: %s", error)
+        return []
+
+    return sorted(names, key=str.lower)
