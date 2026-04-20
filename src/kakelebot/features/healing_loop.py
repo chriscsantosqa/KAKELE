@@ -95,9 +95,9 @@ class HealingLoopRunner:
                 continue
 
             snapshot = self._calibration_service.build_snapshot(window, profile)
-            runtime_hunt_enabled = profile.hunt.enabled
+            runtime_cavebot_active = profile.hunt.enabled
             if is_cavebot_active is not None:
-                runtime_hunt_enabled = is_cavebot_active()
+                runtime_cavebot_active = is_cavebot_active()
 
             last_cycle = self._healing_runtime.execute_cycle(
                 window=window,
@@ -123,7 +123,7 @@ class HealingLoopRunner:
                 mana_threshold_percent=profile.thresholds.mana_percent,
                 life_cooldown_seconds=profile.healing_loop.life_cooldown_seconds,
                 mana_cooldown_seconds=profile.healing_loop.mana_cooldown_seconds,
-                hunt_enabled=runtime_hunt_enabled,
+                hunt_enabled=runtime_cavebot_active,
                 hunt_loop_route=profile.hunt.loop_route,
                 hunt_waypoint_interval_seconds=profile.hunt.waypoint_interval_seconds,
                 hunt_move_up_hotkey=profile.hunt.move_up_hotkey,
@@ -164,7 +164,7 @@ class HealingLoopRunner:
                     fail_safe_triggered = True
                     break
 
-            if not continuous_mode and cycle_index >= cycle_limit:
+            if not continuous_mode and cycle_index >= cycle_limit and not runtime_cavebot_active:
                 break
 
             cycle_elapsed = self._time_provider() - cycle_started_at
