@@ -197,7 +197,6 @@ class MainWindow:
         self._memory_position_var = tk.StringVar(value="position: -")
         self._memory_target_var = tk.StringVar(value="target: -")
         self._memory_level_var = tk.StringVar(value="level/exp: -")
-        self._memory_field_errors_var = tk.StringVar(value="field errors: -")
 
         self._preview_window_var = tk.StringVar(value="window: -")
         self._preview_profile_resolution_var = tk.StringVar(value="profile resolution: -")
@@ -467,14 +466,6 @@ class MainWindow:
         frame = ttk.LabelFrame(parent, text="Memory capture (kakele.exe)", padding=12)
         frame.pack(fill=tk.BOTH, expand=True)
 
-        actions = ttk.Frame(frame)
-        actions.pack(fill=tk.X, pady=(0, 10))
-        ttk.Button(
-            actions,
-            text="Testar offsets agora",
-            command=self._on_test_memory_offsets,
-        ).pack(side=tk.LEFT)
-
         for variable in (
             self._memory_status_var,
             self._memory_source_var,
@@ -483,7 +474,6 @@ class MainWindow:
             self._memory_position_var,
             self._memory_target_var,
             self._memory_level_var,
-            self._memory_field_errors_var,
         ):
             ttk.Label(
                 frame,
@@ -538,20 +528,11 @@ class MainWindow:
             self._memory_position_var.set("position: -")
             self._memory_target_var.set("target: -")
             self._memory_level_var.set("level/exp: -")
-            self._memory_field_errors_var.set("field errors: -")
             return
 
-        state = getattr(live_cycle, "memory_player_state", None)
-        memory_status = getattr(live_cycle, "memory_status", "memory-unavailable")
-        data_source = getattr(live_cycle, "data_source", "unknown")
-        field_errors = getattr(live_cycle, "memory_field_errors", None)
-        self._memory_status_var.set(f"memory status: {memory_status}")
-        self._memory_source_var.set(f"memory source: {data_source}")
-        if field_errors:
-            formatted = " | ".join(f"{name}={reason}" for name, reason in sorted(field_errors.items()))
-            self._memory_field_errors_var.set(f"field errors: {formatted}")
-        else:
-            self._memory_field_errors_var.set("field errors: none")
+        state = live_cycle.memory_player_state
+        self._memory_status_var.set(f"memory status: {live_cycle.memory_status}")
+        self._memory_source_var.set(f"memory source: {live_cycle.data_source}")
 
         if state is None:
             self._memory_hp_var.set("hp: unavailable")
@@ -568,47 +549,6 @@ class MainWindow:
             f"target: has_target={state.has_target} | target_id={state.target_id}"
         )
         self._memory_level_var.set(f"level/exp: {state.level} / {state.exp}")
-
-    def _on_test_memory_offsets(self) -> None:
-        runtime_profile = self._build_runtime_profile_from_form()
-        memory_service = build_memory_service(runtime_profile.memory)
-        if memory_service is None:
-            self._memory_status_var.set("memory status: unavailable (disabled/platform/config)")
-            self._memory_source_var.set("memory source: -")
-            self._memory_field_errors_var.set("field errors: memory service unavailable")
-            self._append_output("Memory test failed: service unavailable.\n")
-            return
-
-        result = memory_service.try_get_player_state()
-        self._memory_status_var.set(
-            f"memory status: {'ok' if result.available else 'failed'}"
-        )
-        self._memory_source_var.set(f"memory source: {result.source}")
-
-        if result.field_errors:
-            formatted = " | ".join(f"{name}={reason}" for name, reason in sorted(result.field_errors.items()))
-            self._memory_field_errors_var.set(f"field errors: {formatted}")
-        else:
-            self._memory_field_errors_var.set("field errors: none")
-
-        if not result.available or result.state is None:
-            self._memory_hp_var.set("hp: unavailable")
-            self._memory_mp_var.set("mp: unavailable")
-            self._memory_position_var.set("position: unavailable")
-            self._memory_target_var.set("target: unavailable")
-            self._memory_level_var.set("level/exp: unavailable")
-            self._append_output(f"Memory test failed: {result.error or 'unknown'}\n")
-            return
-
-        state = result.state
-        self._memory_hp_var.set(f"hp: {state.hp}/{state.max_hp}")
-        self._memory_mp_var.set(f"mp: {state.mp}/{state.max_mp}")
-        self._memory_position_var.set(f"position: ({state.x}, {state.y}, {state.z})")
-        self._memory_target_var.set(
-            f"target: has_target={state.has_target} | target_id={state.target_id}"
-        )
-        self._memory_level_var.set(f"level/exp: {state.level} / {state.exp}")
-        self._append_output("Memory test executed successfully.\n")
 
     def _refresh_profile_list(self) -> None:
         if self._profile_manager is None:
