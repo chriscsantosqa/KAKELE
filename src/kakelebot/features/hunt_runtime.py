@@ -15,6 +15,7 @@ class HuntCycleAction:
     relative_x: int
     relative_y: int
     completed_loops: int
+    current_section: str
 
 
 class HuntRuntime:
@@ -57,10 +58,10 @@ class HuntRuntime:
         total_waypoints = len(waypoints)
         if not enabled:
             self._reset_if_route_changed(None)
-            return HuntCycleAction(None, "disabled", -1, 0, 0, 0, 0)
+            return HuntCycleAction(None, "disabled", -1, 0, 0, 0, 0, "idle")
         if not waypoints:
             self._reset_if_route_changed(tuple())
-            return HuntCycleAction(None, "no-waypoints", -1, 0, 0, 0, 0)
+            return HuntCycleAction(None, "no-waypoints", -1, 0, 0, 0, 0, "idle")
 
         route_signature = tuple(
             (
@@ -76,13 +77,16 @@ class HuntRuntime:
                 waypoint.waypoint_range,
                 waypoint.wait_time_ms,
                 waypoint.action_key,
+                waypoint.section,
             )
             for waypoint in waypoints
         )
         self._reset_if_route_changed(route_signature)
 
+        current_section = self._current_section(waypoints)
+
         if self._last_waypoint_at is not None and (now - self._last_waypoint_at) < waypoint_interval_seconds:
-            return self.snapshot(total_waypoints=total_waypoints, status="cooldown")
+            return self.snapshot(total_waypoints=total_waypoints, status="cooldown", current_section=current_section)
 
         if self._waypoint_index >= total_waypoints:
             if not loop_route:
@@ -95,15 +99,18 @@ class HuntRuntime:
                     relative_x=last_waypoint.relative_x,
                     relative_y=last_waypoint.relative_y,
                     completed_loops=self._completed_loops,
+                    current_section=last_waypoint.section,
                 )
             self._waypoint_index = 0
             self._waypoint_repeat_progress = 0
             self._relative_x = 0
             self._relative_y = 0
             self._completed_loops += 1
+            current_section = self._current_section(waypoints)
 
         current_waypoint_index = self._waypoint_index
         waypoint = waypoints[current_waypoint_index]
+        current_section = waypoint.section
 
         if use_coordinate_navigation and player_position is not None and self._waypoint_has_coordinates(waypoint):
             cycle = self._next_coordinate_action(
@@ -138,6 +145,7 @@ class HuntRuntime:
                 relative_x=self._relative_x,
                 relative_y=self._relative_y,
                 completed_loops=self._completed_loops,
+                current_section=current_section,
             )
 
         delta_x, delta_y = self._direction_delta(waypoint.direction)
@@ -163,6 +171,7 @@ class HuntRuntime:
             relative_x=self._relative_x,
             relative_y=self._relative_y,
             completed_loops=self._completed_loops,
+            current_section=current_section,
         )
 
     def _next_coordinate_action(
@@ -190,6 +199,7 @@ class HuntRuntime:
                 relative_x=self._relative_x,
                 relative_y=self._relative_y,
                 completed_loops=self._completed_loops,
+                current_section=waypoint.section,
             )
 
         delta_x = (waypoint.target_x or 0) - player_position[0]
@@ -214,6 +224,7 @@ class HuntRuntime:
                 relative_x=self._relative_x,
                 relative_y=self._relative_y,
                 completed_loops=self._completed_loops,
+                current_section=waypoint.section,
             )
 
         direction = self._direction_from_delta(delta_x=delta_x, delta_y=delta_y)
@@ -233,6 +244,7 @@ class HuntRuntime:
                 relative_x=self._relative_x,
                 relative_y=self._relative_y,
                 completed_loops=self._completed_loops,
+                current_section=waypoint.section,
             )
 
         self._last_waypoint_at = now
@@ -248,6 +260,7 @@ class HuntRuntime:
             relative_x=self._relative_x,
             relative_y=self._relative_y,
             completed_loops=self._completed_loops,
+            current_section=waypoint.section,
         )
 
     def _handle_operational_waypoint(
@@ -266,12 +279,14 @@ class HuntRuntime:
                     status="stand-wait",
                     current_waypoint_index=current_waypoint_index,
                     total_waypoints=total_waypoints,
+                    current_section=waypoint.section,
                 )
             if now < self._waypoint_hold_until:
                 return self._build_status_cycle(
                     status="stand-wait",
                     current_waypoint_index=current_waypoint_index,
                     total_waypoints=total_waypoints,
+                    current_section=waypoint.section,
                 )
             self._clear_waypoint_operation_state()
             self._advance_waypoint(loop_route=loop_route, total_waypoints=total_waypoints)
@@ -279,6 +294,7 @@ class HuntRuntime:
                 status="stand-complete",
                 current_waypoint_index=current_waypoint_index,
                 total_waypoints=total_waypoints,
+                current_section=waypoint.section,
             )
 
         if waypoint.waypoint_type == "action":
@@ -288,6 +304,7 @@ class HuntRuntime:
                     status="action-missing-key",
                     current_waypoint_index=current_waypoint_index,
                     total_waypoints=total_waypoints,
+                    current_section=waypoint.section,
                 )
             if not self._waypoint_action_executed:
                 self._waypoint_action_executed = True
@@ -305,12 +322,14 @@ class HuntRuntime:
                     relative_x=self._relative_x,
                     relative_y=self._relative_y,
                     completed_loops=self._completed_loops,
+                    current_section=waypoint.section,
                 )
             if self._waypoint_hold_until is not None and now < self._waypoint_hold_until:
                 return self._build_status_cycle(
                     status="action-wait",
                     current_waypoint_index=current_waypoint_index,
                     total_waypoints=total_waypoints,
+                    current_section=waypoint.section,
                 )
             self._clear_waypoint_operation_state()
             self._advance_waypoint(loop_route=loop_route, total_waypoints=total_waypoints)
@@ -318,12 +337,14 @@ class HuntRuntime:
                 status="action-complete",
                 current_waypoint_index=current_waypoint_index,
                 total_waypoints=total_waypoints,
+                current_section=waypoint.section,
             )
 
         return self._build_status_cycle(
             status="unsupported-waypoint-type",
             current_waypoint_index=current_waypoint_index,
             total_waypoints=total_waypoints,
+            current_section=waypoint.section,
         )
 
     def _advance_waypoint(self, *, loop_route: bool, total_waypoints: int) -> None:
@@ -342,6 +363,7 @@ class HuntRuntime:
         status: str,
         current_waypoint_index: int,
         total_waypoints: int,
+        current_section: str,
     ) -> HuntCycleAction:
         return HuntCycleAction(
             action=None,
@@ -351,13 +373,14 @@ class HuntRuntime:
             relative_x=self._relative_x,
             relative_y=self._relative_y,
             completed_loops=self._completed_loops,
+            current_section=current_section,
         )
 
     def _clear_waypoint_operation_state(self) -> None:
         self._waypoint_hold_until = None
         self._waypoint_action_executed = False
 
-    def snapshot(self, *, total_waypoints: int, status: str = "snapshot") -> HuntCycleAction:
+    def snapshot(self, *, total_waypoints: int, status: str = "snapshot", current_section: str = "hunt") -> HuntCycleAction:
         current_index = self._waypoint_index if total_waypoints > 0 else -1
         if total_waypoints > 0 and current_index >= total_waypoints:
             current_index = total_waypoints - 1
@@ -369,6 +392,7 @@ class HuntRuntime:
             relative_x=self._relative_x,
             relative_y=self._relative_y,
             completed_loops=self._completed_loops,
+            current_section=current_section,
         )
 
     def _reset_if_route_changed(self, route_signature: tuple | None) -> None:
@@ -382,6 +406,12 @@ class HuntRuntime:
         self._relative_y = 0
         self._completed_loops = 0
         self._clear_waypoint_operation_state()
+
+    def _current_section(self, waypoints: list[HuntWaypoint]) -> str:
+        if not waypoints:
+            return "idle"
+        index = min(max(self._waypoint_index, 0), len(waypoints) - 1)
+        return waypoints[index].section
 
     @staticmethod
     def _waypoint_has_coordinates(waypoint: HuntWaypoint) -> bool:
