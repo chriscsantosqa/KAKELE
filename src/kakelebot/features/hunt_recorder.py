@@ -150,13 +150,6 @@ class HuntRecorder:
         self._relative_y += delta_y
         self._total_steps += 1
 
-        if self._waypoints and self._waypoints[-1].direction == direction:
-            last = self._waypoints[-1]
-            last.repeats += 1
-            last.relative_x = self._relative_x
-            last.relative_y = self._relative_y
-            return
-
         self._waypoints.append(
             HuntWaypoint(
                 direction=direction,
