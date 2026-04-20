@@ -340,6 +340,7 @@ class MainWindow:
             hunt_move_left_hotkey_var=self._hunt_move_left_hotkey_var,
             hunt_move_right_hotkey_var=self._hunt_move_right_hotkey_var,
             hunt_route_preview_var=self._hunt_route_preview_var,
+            hunt_recording_status_var=self._hunt_recording_status_var,
             on_add_hunt_up=lambda: self._on_add_hunt_waypoint("UP"),
             on_add_hunt_down=lambda: self._on_add_hunt_waypoint("DOWN"),
             on_add_hunt_left=lambda: self._on_add_hunt_waypoint("LEFT"),
@@ -350,7 +351,6 @@ class MainWindow:
             on_stop_hunt_recording=self._on_stop_hunt_recording,
             on_save_profile=self._on_save_profile,
         )
-
     def _build_roi_editor(self, parent: ttk.Frame) -> None:
         RoiEditorPanel(
             parent=parent,
