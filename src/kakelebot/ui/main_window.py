@@ -8,7 +8,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-from kakelebot.core.memory_factory import build_memory_service
+from kakelebot.core.memory_factory import build_memory_service, list_running_process_names
 from kakelebot.core.config import HuntWaypoint, ProfileSettings, save_profile
 from kakelebot.features.hunt_recorder import HuntRecorder
 from kakelebot.core.global_hotkeys import GlobalHotkeyService
@@ -65,6 +65,7 @@ class MainWindow:
         self._profiles_panel: ProfilesPanel | None = None
         self._snapshot_panel: SnapshotPanel | None = None
         self._ai_analysis_panel: AIAnalysisPanel | None = None
+        self._memory_process_values: list[str] = []
 
         preset_values = self._preset_display_values()
 
@@ -86,28 +87,14 @@ class MainWindow:
         self._life_percent_var = tk.StringVar(value=str(profile.thresholds.life_percent))
         self._mana_percent_var = tk.StringVar(value=str(profile.thresholds.mana_percent))
         self._ui_scale_var = tk.StringVar(value=str(profile.ui_scale))
-        self._polling_interval_var = tk.StringVar(
-            value=str(profile.healing_loop.polling_interval_seconds)
-        )
-        self._life_cooldown_var = tk.StringVar(
-            value=str(profile.healing_loop.life_cooldown_seconds)
-        )
-        self._mana_cooldown_var = tk.StringVar(
-            value=str(profile.healing_loop.mana_cooldown_seconds)
-        )
-        self._cycle_limit_var = tk.StringVar(
-            value=str(profile.healing_loop.bootstrap_cycle_limit)
-        )
+        self._polling_interval_var = tk.StringVar(value=str(profile.healing_loop.polling_interval_seconds))
+        self._life_cooldown_var = tk.StringVar(value=str(profile.healing_loop.life_cooldown_seconds))
+        self._mana_cooldown_var = tk.StringVar(value=str(profile.healing_loop.mana_cooldown_seconds))
+        self._cycle_limit_var = tk.StringVar(value=str(profile.healing_loop.bootstrap_cycle_limit))
         self._continuous_mode_var = tk.BooleanVar(value=profile.healing_loop.continuous_mode)
-        self._max_actions_per_minute_var = tk.StringVar(
-            value=str(profile.healing_loop.max_actions_per_minute)
-        )
-        self._max_consecutive_ocr_failures_var = tk.StringVar(
-            value=str(profile.healing_loop.max_consecutive_ocr_failures)
-        )
-        self._max_window_missing_seconds_var = tk.StringVar(
-            value=str(profile.healing_loop.max_window_missing_seconds)
-        )
+        self._max_actions_per_minute_var = tk.StringVar(value=str(profile.healing_loop.max_actions_per_minute))
+        self._max_consecutive_ocr_failures_var = tk.StringVar(value=str(profile.healing_loop.max_consecutive_ocr_failures))
+        self._max_window_missing_seconds_var = tk.StringVar(value=str(profile.healing_loop.max_window_missing_seconds))
         self._start_stop_hotkey_var = tk.StringVar(value=profile.hotkeys.start_stop)
         self._pause_resume_hotkey_var = tk.StringVar(value=profile.hotkeys.pause_resume)
         self._heal_life_hotkey_var = tk.StringVar(value=profile.hotkeys.heal_life)
@@ -121,24 +108,12 @@ class MainWindow:
         self._attack_enabled_var = tk.BooleanVar(value=profile.combat.attack_enabled)
         self._attack_cooldown_var = tk.StringVar(value=str(profile.combat.attack_cooldown_seconds))
         self._secondary_attack_enabled_var = tk.BooleanVar(value=profile.combat.secondary_attack_enabled)
-        self._secondary_attack_cooldown_var = tk.StringVar(
-            value=str(profile.combat.secondary_attack_cooldown_seconds)
-        )
-        self._secondary_attack_after_primary_only_var = tk.BooleanVar(
-            value=profile.combat.secondary_attack_after_primary_only
-        )
-        self._secondary_attack_combo_window_var = tk.StringVar(
-            value=str(profile.combat.secondary_attack_combo_window_seconds)
-        )
-        self._target_confirmation_cycles_var = tk.StringVar(
-            value=str(profile.combat.target_confirmation_cycles)
-        )
-        self._target_stability_window_var = tk.StringVar(
-            value=str(profile.combat.target_stability_window)
-        )
-        self._max_target_text_variants_var = tk.StringVar(
-            value=str(profile.combat.max_target_text_variants)
-        )
+        self._secondary_attack_cooldown_var = tk.StringVar(value=str(profile.combat.secondary_attack_cooldown_seconds))
+        self._secondary_attack_after_primary_only_var = tk.BooleanVar(value=profile.combat.secondary_attack_after_primary_only)
+        self._secondary_attack_combo_window_var = tk.StringVar(value=str(profile.combat.secondary_attack_combo_window_seconds))
+        self._target_confirmation_cycles_var = tk.StringVar(value=str(profile.combat.target_confirmation_cycles))
+        self._target_stability_window_var = tk.StringVar(value=str(profile.combat.target_stability_window))
+        self._max_target_text_variants_var = tk.StringVar(value=str(profile.combat.max_target_text_variants))
 
         self._life_left_ratio_var = tk.StringVar(value=str(profile.rois.life_bar.left_ratio))
         self._life_top_ratio_var = tk.StringVar(value=str(profile.rois.life_bar.top_ratio))
@@ -165,6 +140,15 @@ class MainWindow:
                 repeats=waypoint.repeats,
                 relative_x=waypoint.relative_x,
                 relative_y=waypoint.relative_y,
+                target_x=waypoint.target_x,
+                target_y=waypoint.target_y,
+                target_z=waypoint.target_z,
+                waypoint_type=waypoint.waypoint_type,
+                label=waypoint.label,
+                waypoint_range=waypoint.waypoint_range,
+                wait_time_ms=waypoint.wait_time_ms,
+                action_key=waypoint.action_key,
+                section=waypoint.section,
             )
             for waypoint in profile.hunt.waypoints
         ]
@@ -190,6 +174,9 @@ class MainWindow:
         self._diag_terminated_var = tk.StringVar(value="terminated early: -")
         self._diag_termination_reason_var = tk.StringVar(value="termination reason: -")
         self._diag_fail_safe_var = tk.StringVar(value="fail-safe triggered: -")
+        self._memory_enabled_var = tk.BooleanVar(value=profile.memory.enabled)
+        self._memory_process_name_var = tk.StringVar(value=profile.memory.process_name)
+        self._memory_process_picker_var = tk.StringVar(value=profile.memory.process_name)
         self._memory_status_var = tk.StringVar(value="memory status: -")
         self._memory_source_var = tk.StringVar(value="memory source: -")
         self._memory_hp_var = tk.StringVar(value="hp: -")
@@ -240,6 +227,7 @@ class MainWindow:
         self._configure_global_hotkeys()
         self._refresh_latest_snapshot_review()
         self._refresh_snapshot_history_controls()
+        self._refresh_memory_process_options()
         self._schedule_refresh()
 
     def _build_layout(self) -> None:
@@ -272,6 +260,7 @@ class MainWindow:
 
         self._build_diagnostics(right_panel)
         self._build_preview_panel(right_panel)
+        self._build_memory_overview(right_panel)
         self._build_ai_analysis_panel(right_panel)
         self._build_snapshot_review(right_panel)
         self._build_output(right_panel)
@@ -359,6 +348,7 @@ class MainWindow:
             on_stop_hunt_recording=self._on_stop_hunt_recording,
             on_save_profile=self._on_save_profile,
         )
+
     def _build_roi_editor(self, parent: ttk.Frame) -> None:
         RoiEditorPanel(
             parent=parent,
@@ -463,8 +453,47 @@ class MainWindow:
         self._output.configure(state=tk.DISABLED)
 
     def _build_memory_overview(self, parent: ttk.Frame) -> None:
-        frame = ttk.LabelFrame(parent, text="Memory capture (kakele.exe)", padding=12)
-        frame.pack(fill=tk.BOTH, expand=True)
+        frame = ttk.LabelFrame(parent, text="Memory capture (Windows executable)", padding=12)
+        frame.pack(fill=tk.BOTH, expand=True, pady=(0, 12))
+
+        controls = ttk.Frame(frame)
+        controls.pack(fill=tk.X, pady=(0, 8))
+
+        ttk.Checkbutton(
+            controls,
+            text="Enable memory reading",
+            variable=self._memory_enabled_var,
+            command=self._on_memory_settings_changed,
+        ).pack(side=tk.LEFT, padx=(0, 10))
+
+        ttk.Label(controls, text="Executable").pack(side=tk.LEFT, padx=(0, 6))
+        self._memory_process_combo = ttk.Combobox(
+            controls,
+            textvariable=self._memory_process_picker_var,
+            state="readonly",
+            width=28,
+            values=self._memory_process_values,
+        )
+        self._memory_process_combo.pack(side=tk.LEFT, padx=(0, 6))
+        self._memory_process_combo.bind("<<ComboboxSelected>>", lambda _event: self._on_apply_memory_process_selection())
+
+        ttk.Button(
+            controls,
+            text="Refresh executables",
+            command=self._on_refresh_memory_processes,
+        ).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(
+            controls,
+            text="Use selected",
+            command=self._on_apply_memory_process_selection,
+        ).pack(side=tk.LEFT)
+
+        ttk.Label(
+            frame,
+            textvariable=self._memory_process_name_var,
+            wraplength=860,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 6))
 
         for variable in (
             self._memory_status_var,
@@ -495,11 +524,7 @@ class MainWindow:
         latest = self._session_controller.last_result
         if latest is not None and latest is not self._last_session_result:
             self._last_session_result = latest
-            cycles_completed = (
-                latest.healing_loop_result.cycles_completed
-                if latest.healing_loop_result is not None
-                else "-"
-            )
+            cycles_completed = latest.healing_loop_result.cycles_completed if latest.healing_loop_result is not None else "-"
             self._cycles_var.set(f"cycles: {cycles_completed}")
             self._update_diagnostics(latest)
             self._append_output(self._format_result(latest))
@@ -513,26 +538,45 @@ class MainWindow:
 
     def _apply_memory_overview(self) -> None:
         live_cycle = self._session_controller.live_cycle_result
-        if (
-            live_cycle is None
-            and self._last_session_result is not None
-            and self._last_session_result.healing_loop_result is not None
-        ):
+        if live_cycle is None and self._last_session_result is not None and self._last_session_result.healing_loop_result is not None:
             live_cycle = self._last_session_result.healing_loop_result.last_cycle
 
-        if live_cycle is None:
-            self._memory_status_var.set("memory status: -")
-            self._memory_source_var.set("memory source: -")
-            self._memory_hp_var.set("hp: -")
-            self._memory_mp_var.set("mp: -")
-            self._memory_position_var.set("position: -")
-            self._memory_target_var.set("target: -")
-            self._memory_level_var.set("level/exp: -")
+        if not self._memory_enabled_var.get():
+            self._memory_status_var.set("memory status: disabled in UI/profile")
+            self._memory_source_var.set("memory source: inactive")
+            self._memory_hp_var.set("hp: unavailable")
+            self._memory_mp_var.set("mp: unavailable")
+            self._memory_position_var.set("position: unavailable")
+            self._memory_target_var.set("target: unavailable")
+            self._memory_level_var.set("level/exp: unavailable")
             return
 
-        state = live_cycle.memory_player_state
-        self._memory_status_var.set(f"memory status: {live_cycle.memory_status}")
-        self._memory_source_var.set(f"memory source: {live_cycle.data_source}")
+        read_result = self._read_memory_overview_result()
+        selected_process = self._memory_process_name_var.get().replace("memory executable: ", "", 1)
+
+        if read_result is None:
+            self._memory_status_var.set("memory status: unavailable")
+            self._memory_source_var.set(f"memory source: process={selected_process or 'unselected'}")
+            self._memory_hp_var.set(
+                f"hp: {self._format_reading(live_cycle.life_reading) if live_cycle is not None else 'unavailable'}"
+            )
+            self._memory_mp_var.set(
+                f"mp: {self._format_reading(live_cycle.mana_reading) if live_cycle is not None else 'unavailable'}"
+            )
+            self._memory_position_var.set(f"position: {live_cycle.player_position if live_cycle is not None else 'unavailable'}")
+            self._memory_target_var.set(
+                f"target: has_target={live_cycle.has_target} | text='{live_cycle.target_text or 'empty'}'"
+                if live_cycle is not None
+                else "target: unavailable"
+            )
+            self._memory_level_var.set("level/exp: unavailable")
+            return
+
+        state = read_result.state
+        self._memory_status_var.set(
+            f"memory status: {'available' if read_result.available and state is not None else read_result.error or 'unavailable'}"
+        )
+        self._memory_source_var.set(f"memory source: {read_result.source} | process={selected_process or 'unselected'}")
 
         if state is None:
             self._memory_hp_var.set("hp: unavailable")
@@ -545,10 +589,56 @@ class MainWindow:
         self._memory_hp_var.set(f"hp: {state.hp}/{state.max_hp}")
         self._memory_mp_var.set(f"mp: {state.mp}/{state.max_mp}")
         self._memory_position_var.set(f"position: ({state.x}, {state.y}, {state.z})")
-        self._memory_target_var.set(
-            f"target: has_target={state.has_target} | target_id={state.target_id}"
-        )
+        self._memory_target_var.set(f"target: has_target={state.has_target} | target_id={state.target_id}")
         self._memory_level_var.set(f"level/exp: {state.level} / {state.exp}")
+
+    def _read_memory_overview_result(self):
+        try:
+            memory_profile = self._build_memory_profile_from_form()
+        except ValueError as error:
+            self._memory_status_var.set(f"memory status: invalid form ({error})")
+            return None
+
+        memory_service = build_memory_service(memory_profile.memory)
+        if memory_service is None:
+            return None
+        return memory_service.try_get_player_state()
+
+    def _build_memory_profile_from_form(self) -> ProfileSettings:
+        memory_profile = copy.deepcopy(self._profile)
+        self._sync_form_into_profile(memory_profile)
+        return memory_profile
+
+    def _refresh_memory_process_options(self) -> None:
+        process_names = list_running_process_names()
+        if self._memory_process_name_var.get().startswith("memory executable: "):
+            current_process = self._memory_process_name_var.get().replace("memory executable: ", "", 1)
+        else:
+            current_process = self._memory_process_name_var.get().strip() or self._profile.memory.process_name
+        if current_process and current_process not in process_names:
+            process_names.insert(0, current_process)
+        self._memory_process_values = process_names
+        if hasattr(self, "_memory_process_combo"):
+            self._memory_process_combo.configure(values=self._memory_process_values)
+        if current_process:
+            self._memory_process_picker_var.set(current_process)
+        self._memory_process_name_var.set(f"memory executable: {current_process or 'unselected'}")
+
+    def _on_refresh_memory_processes(self) -> None:
+        self._refresh_memory_process_options()
+        self._append_output("Memory executable list refreshed.\n")
+
+    def _on_apply_memory_process_selection(self) -> None:
+        selected = self._memory_process_picker_var.get().strip()
+        if not selected:
+            self._append_output("Executable selection ignored: choose a process first.\n")
+            return
+        self._memory_process_name_var.set(f"memory executable: {selected}")
+        self._append_output(f"Memory executable selected: {selected}\n")
+
+    def _on_memory_settings_changed(self) -> None:
+        enabled_text = "enabled" if self._memory_enabled_var.get() else "disabled"
+        self._append_output(f"Memory reading {enabled_text} in UI. Save profile to persist.\n")
 
     def _refresh_profile_list(self) -> None:
         if self._profile_manager is None:
@@ -573,10 +663,7 @@ class MainWindow:
         last_cycle = loop_result.last_cycle if loop_result else None
         resolution_validation = result.resolution_validation
 
-        self._diag_resolution_var.set(
-            "resolution validation: "
-            + (resolution_validation.message if resolution_validation is not None else "unavailable")
-        )
+        self._diag_resolution_var.set("resolution validation: " + (resolution_validation.message if resolution_validation is not None else "unavailable"))
 
         if last_cycle is None:
             self._diag_decision_var.set("decision: -")
@@ -592,35 +679,20 @@ class MainWindow:
             self._diag_target_confirmed_var.set("target confirmed: -")
             self._diag_target_oscillating_var.set("target oscillating: -")
             self._diag_target_reason_var.set("target reason: -")
-            self._diag_terminated_var.set(
-                "terminated early: "
-                + (str(loop_result.terminated_early) if loop_result is not None else "-")
-            )
-            self._diag_termination_reason_var.set(
-                "termination reason: "
-                + ((loop_result.termination_reason or "none") if loop_result is not None else "-")
-            )
-            self._diag_fail_safe_var.set(
-                "fail-safe triggered: "
-                + (str(loop_result.fail_safe_triggered) if loop_result is not None else "-")
-            )
+            self._diag_terminated_var.set("terminated early: " + (str(loop_result.terminated_early) if loop_result is not None else "-"))
+            self._diag_termination_reason_var.set("termination reason: " + ((loop_result.termination_reason or "none") if loop_result is not None else "-"))
+            self._diag_fail_safe_var.set("fail-safe triggered: " + (str(loop_result.fail_safe_triggered) if loop_result is not None else "-"))
             return
 
         self._diag_decision_var.set(f"decision: {last_cycle.decision.reason}")
         self._diag_life_var.set(f"life: {self._format_reading(last_cycle.life_reading)}")
         self._diag_mana_var.set(f"mana: {self._format_reading(last_cycle.mana_reading)}")
-        self._diag_actions_var.set(
-            "actions executed: " + (self._format_actions(last_cycle.actions_executed) or "none")
-        )
-        self._diag_suppressed_var.set(
-            "actions suppressed: " + (", ".join(last_cycle.suppressed_actions) or "none")
-        )
+        self._diag_actions_var.set("actions executed: " + (self._format_actions(last_cycle.actions_executed) or "none"))
+        self._diag_suppressed_var.set("actions suppressed: " + (", ".join(last_cycle.suppressed_actions) or "none"))
         self._diag_haste_var.set(f"haste status: {last_cycle.haste_status}")
         self._diag_attack_var.set(f"attack status: {last_cycle.attack_status}")
         self._diag_hunt_var.set(f"hunt status: {last_cycle.hunt_status}")
-        self._diag_secondary_attack_var.set(
-            f"secondary attack status: {last_cycle.secondary_attack_status}"
-        )
+        self._diag_secondary_attack_var.set(f"secondary attack status: {last_cycle.secondary_attack_status}")
         self._diag_target_var.set(f"target detected: {last_cycle.has_target}")
         self._diag_target_confirmed_var.set(f"target confirmed: {last_cycle.target_confirmed}")
         self._diag_target_oscillating_var.set(f"target oscillating: {last_cycle.target_oscillating}")
@@ -629,21 +701,12 @@ class MainWindow:
             + (
                 f"{last_cycle.target_reason} | text='{last_cycle.target_text or 'empty'}' "
                 f"| source={last_cycle.data_source} | memory={last_cycle.memory_status} "
-                f"| pos={last_cycle.player_position}"
+                f"| pos={last_cycle.player_position} | section={last_cycle.current_section}"
             )
         )
-        self._diag_terminated_var.set(
-            "terminated early: "
-            + (str(loop_result.terminated_early) if loop_result is not None else "-")
-        )
-        self._diag_termination_reason_var.set(
-            "termination reason: "
-            + ((loop_result.termination_reason or "none") if loop_result is not None else "-")
-        )
-        self._diag_fail_safe_var.set(
-            "fail-safe triggered: "
-            + (str(loop_result.fail_safe_triggered) if loop_result is not None else "-")
-        )
+        self._diag_terminated_var.set("terminated early: " + (str(loop_result.terminated_early) if loop_result is not None else "-"))
+        self._diag_termination_reason_var.set("termination reason: " + ((loop_result.termination_reason or "none") if loop_result is not None else "-"))
+        self._diag_fail_safe_var.set("fail-safe triggered: " + (str(loop_result.fail_safe_triggered) if loop_result is not None else "-"))
 
     def _configure_global_hotkeys(self) -> None:
         try:
@@ -677,11 +740,7 @@ class MainWindow:
         try:
             runtime_profile = self._build_runtime_profile_from_form()
             self._append_output("Starting session...\n")
-            self._worker = threading.Thread(
-                target=self._run_session,
-                args=(runtime_profile,),
-                daemon=True,
-            )
+            self._worker = threading.Thread(target=self._run_session, args=(runtime_profile,), daemon=True)
             self._worker.start()
         except ValueError as error:
             self._append_output(f"Start failed: {error}\n")
@@ -692,10 +751,7 @@ class MainWindow:
         return runtime_profile
 
     def _run_session(self, runtime_profile: ProfileSettings) -> None:
-        result = self._session_controller.start_healing_bootstrap_session(
-            profile=runtime_profile,
-            profile_path=self._profile_path,
-        )
+        result = self._session_controller.start_healing_bootstrap_session(profile=runtime_profile, profile_path=self._profile_path)
         self._last_session_result = result
 
     def _on_pause(self) -> None:
@@ -739,10 +795,7 @@ class MainWindow:
             self._append_output(f"AI visual analysis saved to {persisted_path}.\n")
             if result.error_message:
                 return
-            if result.suggested_rois and messagebox.askyesno(
-                "Apply AI ROI suggestions",
-                "AI returned ROI suggestions. Apply them to the current form?",
-            ):
+            if result.suggested_rois and messagebox.askyesno("Apply AI ROI suggestions", "AI returned ROI suggestions. Apply them to the current form?"):
                 self._apply_ai_roi_suggestions(result.suggested_rois)
                 self._append_output("AI ROI suggestions applied to current form.\n")
                 self._on_refresh_preview()
@@ -753,18 +806,10 @@ class MainWindow:
         self._ai_summary_var.set(f"ai summary: {result.summary}")
         self._ai_screen_state_var.set(f"ai screen state: {result.screen_state}")
         self._ai_readiness_var.set(f"ai can start session: {result.can_start_session}")
-        self._ai_issues_var.set(
-            "ai issues: " + (" | ".join(result.issues) if result.issues else "none")
-        )
-        self._ai_actions_var.set(
-            "ai recommended actions: "
-            + (" | ".join(result.recommended_actions) if result.recommended_actions else "none")
-        )
+        self._ai_issues_var.set("ai issues: " + (" | ".join(result.issues) if result.issues else "none"))
+        self._ai_actions_var.set("ai recommended actions: " + (" | ".join(result.recommended_actions) if result.recommended_actions else "none"))
         if result.detected_elements:
-            parts = [
-                f"{key}={value.detected} ({value.confidence})"
-                for key, value in result.detected_elements.items()
-            ]
+            parts = [f"{key}={value.detected} ({value.confidence})" for key, value in result.detected_elements.items()]
             self._ai_detections_var.set("ai detected elements: " + " | ".join(parts))
         else:
             self._ai_detections_var.set("ai detected elements: none")
@@ -786,35 +831,16 @@ class MainWindow:
             self._ai_issues_var.set(f"ai issues: {result.error_message}")
 
     def _persist_ai_analysis_result(self, result) -> Path:
-        return save_ai_analysis_result(
-            self._ai_analysis_root_dir(),
-            result,
-            history_limit=self._AI_ANALYSIS_HISTORY_LIMIT,
-        )
+        return save_ai_analysis_result(self._ai_analysis_root_dir(), result, history_limit=self._AI_ANALYSIS_HISTORY_LIMIT)
 
     def _ai_analysis_root_dir(self) -> Path:
         return self._snapshot_root_dir() / "_ai_analysis"
 
     def _apply_ai_roi_suggestions(self, suggested_rois: dict) -> None:
         mapping = {
-            "life": (
-                self._life_left_ratio_var,
-                self._life_top_ratio_var,
-                self._life_width_ratio_var,
-                self._life_height_ratio_var,
-            ),
-            "mana": (
-                self._mana_left_ratio_var,
-                self._mana_top_ratio_var,
-                self._mana_width_ratio_var,
-                self._mana_height_ratio_var,
-            ),
-            "target": (
-                self._target_left_ratio_var,
-                self._target_top_ratio_var,
-                self._target_width_ratio_var,
-                self._target_height_ratio_var,
-            ),
+            "life": (self._life_left_ratio_var, self._life_top_ratio_var, self._life_width_ratio_var, self._life_height_ratio_var),
+            "mana": (self._mana_left_ratio_var, self._mana_top_ratio_var, self._mana_width_ratio_var, self._mana_height_ratio_var),
+            "target": (self._target_left_ratio_var, self._target_top_ratio_var, self._target_width_ratio_var, self._target_height_ratio_var),
         }
         for roi_name, region in suggested_rois.items():
             variables = mapping.get(roi_name)
@@ -828,12 +854,7 @@ class MainWindow:
 
     @staticmethod
     def _format_ai_analysis_result(result) -> str:
-        lines = [
-            "AI visual analysis:",
-            f"summary={result.summary}",
-            f"screen_state={result.screen_state}",
-            f"can_start_session={result.can_start_session}",
-        ]
+        lines = ["AI visual analysis:", f"summary={result.summary}", f"screen_state={result.screen_state}", f"can_start_session={result.can_start_session}"]
         if result.error_message:
             lines.append(f"error={result.error_message}")
         if result.issues:
@@ -842,23 +863,15 @@ class MainWindow:
             lines.append("recommended_actions=" + " | ".join(result.recommended_actions))
         if result.detected_elements:
             for key, value in result.detected_elements.items():
-                lines.append(
-                    f"detected_{key}={value.detected} confidence={value.confidence} rationale={value.rationale}"
-                )
+                lines.append(f"detected_{key}={value.detected} confidence={value.confidence} rationale={value.rationale}")
         if result.suggested_rois:
             for key, value in result.suggested_rois.items():
-                lines.append(
-                    f"suggested_roi_{key}=left:{value.left_ratio:.4f} top:{value.top_ratio:.4f} width:{value.width_ratio:.4f} height:{value.height_ratio:.4f}"
-                )
+                lines.append(f"suggested_roi_{key}=left:{value.left_ratio:.4f} top:{value.top_ratio:.4f} width:{value.width_ratio:.4f} height:{value.height_ratio:.4f}")
         return "\n".join(lines) + "\n\n"
 
     def _on_nudge_roi(self, roi_name: str, field_name: str, direction: int) -> None:
         try:
-            step = self._parse_float(
-                self._roi_nudge_step_var.get(),
-                minimum=0.0001,
-                field_name="ROI nudge step",
-            )
+            step = self._parse_float(self._roi_nudge_step_var.get(), minimum=0.0001, field_name="ROI nudge step")
             variable = self._roi_variable(roi_name, field_name)
             current = float(variable.get().strip())
             minimum = 0.0001 if field_name in ("width", "height") else 0.0
@@ -887,9 +900,7 @@ class MainWindow:
             self._last_preview_result = refreshed_preview
             self._last_preview_profile = copy.deepcopy(self._profile)
             self._apply_preview(refreshed_preview, self._profile)
-            self._append_output(
-                f"Current window adopted as baseline: {self._profile.resolution_width}x{self._profile.resolution_height}.\n"
-            )
+            self._append_output(f"Current window adopted as baseline: {self._profile.resolution_width}x{self._profile.resolution_height}.\n")
         except ValueError as error:
             self._append_output(f"Adopt baseline failed: {error}\n")
 
@@ -901,33 +912,20 @@ class MainWindow:
                 self._append_output("Calibration snapshot save failed: no preview available.\n")
                 return
             if self._last_preview_result.error_message:
-                self._append_output(
-                    f"Calibration snapshot save failed: {self._last_preview_result.error_message}\n"
-                )
+                self._append_output(f"Calibration snapshot save failed: {self._last_preview_result.error_message}\n")
                 return
 
             snapshot_dir = self._snapshot_root_dir() / self._timestamp_slug()
             snapshot_dir.mkdir(parents=True, exist_ok=False)
             previous_metadata = self._load_latest_snapshot_metadata()
-            metadata = self._build_snapshot_metadata(
-                self._last_preview_result,
-                self._last_preview_profile,
-                snapshot_dir.name,
-                previous_metadata,
-            )
+            metadata = self._build_snapshot_metadata(self._last_preview_result, self._last_preview_profile, snapshot_dir.name, previous_metadata)
             self._save_preview_images(self._last_preview_result, snapshot_dir)
 
             metadata_path = snapshot_dir / "metadata.json"
-            metadata_path.write_text(
-                json.dumps(metadata, indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
+            metadata_path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
             latest_path = self._snapshot_root_dir() / "latest.json"
             latest_path.parent.mkdir(parents=True, exist_ok=True)
-            latest_path.write_text(
-                json.dumps(metadata, indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
+            latest_path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
             self._trim_snapshot_history()
             self._refresh_latest_snapshot_review()
             self._refresh_snapshot_history_controls()
@@ -953,13 +951,7 @@ class MainWindow:
             if image is not None and hasattr(image, "save"):
                 image.save(snapshot_dir / file_name)
 
-    def _build_snapshot_metadata(
-        self,
-        preview: SessionPreviewResult,
-        preview_profile: ProfileSettings,
-        snapshot_name: str,
-        previous_metadata: dict | None,
-    ) -> dict:
+    def _build_snapshot_metadata(self, preview: SessionPreviewResult, preview_profile: ProfileSettings, snapshot_name: str, previous_metadata: dict | None) -> dict:
         window = preview.window
         calibration = preview.calibration_snapshot
         resolution_validation = preview.resolution_validation
@@ -1006,11 +998,7 @@ class MainWindow:
             "comparison_to_previous": self._build_snapshot_comparison(preview, previous_metadata),
         }
 
-    def _build_snapshot_comparison(
-        self,
-        preview: SessionPreviewResult,
-        previous_metadata: dict | None,
-    ) -> dict | None:
+    def _build_snapshot_comparison(self, preview: SessionPreviewResult, previous_metadata: dict | None) -> dict | None:
         if previous_metadata is None:
             return None
 
@@ -1020,16 +1008,8 @@ class MainWindow:
         current_mana_text = preview.mana_preview.normalized_text if preview.mana_preview is not None else None
         current_target_text = preview.target_preview.normalized_text if preview.target_preview is not None else None
         current_target_detected = preview.target_preview.has_target if preview.target_preview is not None else None
-        current_validation_message = (
-            preview.resolution_validation.message
-            if preview.resolution_validation is not None
-            else None
-        )
-        current_matches_profile = (
-            preview.resolution_validation.matches_profile
-            if preview.resolution_validation is not None
-            else None
-        )
+        current_validation_message = preview.resolution_validation.message if preview.resolution_validation is not None else None
+        current_matches_profile = preview.resolution_validation.matches_profile if preview.resolution_validation is not None else None
 
         return {
             "previous_snapshot_name": previous_metadata.get("snapshot_name"),
@@ -1065,21 +1045,14 @@ class MainWindow:
         snapshot_root = self._snapshot_root_dir()
         if not snapshot_root.exists():
             return []
-        return sorted(
-            [path.name for path in snapshot_root.iterdir() if path.is_dir()],
-            reverse=True,
-        )
+        return sorted([path.name for path in snapshot_root.iterdir() if path.is_dir()], reverse=True)
 
     def _snapshot_root_dir(self) -> Path:
         return self._profile_path.parent / "_snapshots" / self._profile.name
 
     def _trim_snapshot_history(self) -> None:
         snapshot_root = self._snapshot_root_dir()
-        snapshot_dirs = sorted(
-            [path for path in snapshot_root.iterdir() if path.is_dir()],
-            key=lambda path: path.name,
-            reverse=True,
-        )
+        snapshot_dirs = sorted([path for path in snapshot_root.iterdir() if path.is_dir()], key=lambda path: path.name, reverse=True)
         for obsolete_dir in snapshot_dirs[self._SNAPSHOT_HISTORY_LIMIT :]:
             for child in sorted(obsolete_dir.rglob("*"), reverse=True):
                 if child.is_file():
@@ -1136,9 +1109,7 @@ class MainWindow:
         ocr = metadata.get("ocr") or {}
         comparison = metadata.get("comparison_to_previous") or {}
 
-        self._snapshot_review_status_var.set(
-            f"latest snapshot: {snapshot_name} | created_at_utc={created_at}"
-        )
+        self._snapshot_review_status_var.set(f"latest snapshot: {snapshot_name} | created_at_utc={created_at}")
         self._snapshot_review_resolution_var.set(
             "snapshot resolution: "
             f"{profile.get('resolution_width')}x{profile.get('resolution_height')} "
@@ -1151,12 +1122,8 @@ class MainWindow:
             f"mana='{self._short_snapshot_text((ocr.get('mana') or {}).get('normalized_text'))}' | "
             f"target='{self._short_snapshot_text((ocr.get('target') or {}).get('normalized_text'))}'"
         )
-        self._snapshot_review_changes_var.set(
-            "snapshot changes: " + self._snapshot_change_summary(comparison)
-        )
-        self._snapshot_review_assessment_var.set(
-            "snapshot assessment: " + self._snapshot_assessment(metadata)
-        )
+        self._snapshot_review_changes_var.set("snapshot changes: " + self._snapshot_change_summary(comparison))
+        self._snapshot_review_assessment_var.set("snapshot assessment: " + self._snapshot_assessment(metadata))
 
     def _on_refresh_snapshot_history(self) -> None:
         self._refresh_snapshot_history_controls()
@@ -1184,9 +1151,7 @@ class MainWindow:
 
         self._snapshot_history_primary_var.set(primary)
         self._snapshot_history_secondary_var.set(secondary)
-        self._snapshot_history_selection_var.set(
-            f"snapshot history: available={len(snapshot_names)} | newest={snapshot_names[0]}"
-        )
+        self._snapshot_history_selection_var.set(f"snapshot history: available={len(snapshot_names)} | newest={snapshot_names[0]}")
         self._apply_selected_snapshot_comparison()
 
     def _on_compare_selected_snapshots(self) -> None:
@@ -1194,9 +1159,7 @@ class MainWindow:
         if not self._snapshot_history_primary_var.get() or not self._snapshot_history_secondary_var.get():
             self._append_output("Snapshot comparison unavailable: select snapshots first.\n")
             return
-        self._append_output(
-            f"Snapshots compared: A={self._snapshot_history_primary_var.get()} | B={self._snapshot_history_secondary_var.get()}.\n"
-        )
+        self._append_output(f"Snapshots compared: A={self._snapshot_history_primary_var.get()} | B={self._snapshot_history_secondary_var.get()}.\n")
 
     def _apply_selected_snapshot_comparison(self) -> None:
         primary_name = self._snapshot_history_primary_var.get()
@@ -1209,15 +1172,9 @@ class MainWindow:
             self._snapshot_history_assessment_var.set("comparison assessment: select valid snapshots")
             return
 
-        self._snapshot_history_selection_var.set(
-            f"snapshot history: A={primary_name} | B={secondary_name}"
-        )
-        self._snapshot_history_compare_var.set(
-            "snapshot comparison: " + self._manual_snapshot_comparison_summary(primary_metadata, secondary_metadata)
-        )
-        self._snapshot_history_assessment_var.set(
-            "comparison assessment: " + self._manual_snapshot_comparison_assessment(primary_metadata, secondary_metadata)
-        )
+        self._snapshot_history_selection_var.set(f"snapshot history: A={primary_name} | B={secondary_name}")
+        self._snapshot_history_compare_var.set("snapshot comparison: " + self._manual_snapshot_comparison_summary(primary_metadata, secondary_metadata))
+        self._snapshot_history_assessment_var.set("comparison assessment: " + self._manual_snapshot_comparison_assessment(primary_metadata, secondary_metadata))
 
     @staticmethod
     def _short_snapshot_text(text: str | None, max_length: int = 24) -> str:
@@ -1279,9 +1236,7 @@ class MainWindow:
             self._refresh_latest_snapshot_review()
             self._refresh_snapshot_history_controls()
             self._on_refresh_preview()
-            self._append_output(
-                f"Latest snapshot context loaded into form: {metadata.get('snapshot_name')}.\n"
-            )
+            self._append_output(f"Latest snapshot context loaded into form: {metadata.get('snapshot_name')}.\n")
         except (TypeError, ValueError) as error:
             self._append_output(f"Load latest snapshot context failed: {error}\n")
 
@@ -1297,9 +1252,7 @@ class MainWindow:
             self._refresh_latest_snapshot_review()
             self._refresh_snapshot_history_controls()
             self._on_refresh_preview()
-            self._append_output(
-                f"Selected snapshot context loaded into form: {metadata.get('snapshot_name')}.\n"
-            )
+            self._append_output(f"Selected snapshot context loaded into form: {metadata.get('snapshot_name')}.\n")
         except (TypeError, ValueError) as error:
             self._append_output(f"Load selected snapshot context failed: {error}\n")
 
@@ -1325,10 +1278,7 @@ class MainWindow:
             return
         try:
             self._sync_form_into_profile(self._profile)
-            profile, profile_path = self._profile_manager.save_as(
-                self._profile,
-                self._new_profile_name_var.get(),
-            )
+            profile, profile_path = self._profile_manager.save_as(self._profile, self._new_profile_name_var.get())
             self._load_profile_state(profile, profile_path)
             self._new_profile_name_var.set("")
             self._refresh_profile_list()
@@ -1361,11 +1311,7 @@ class MainWindow:
         try:
             self._sync_form_into_profile(self._profile)
             preset_key = self._selected_preset_key()
-            profile, profile_path = self._profile_manager.save_as_preset(
-                self._profile,
-                preset_key,
-                self._preset_profile_name_var.get(),
-            )
+            profile, profile_path = self._profile_manager.save_as_preset(self._profile, preset_key, self._preset_profile_name_var.get())
             self._load_profile_state(profile, profile_path)
             self._preset_profile_name_var.set("")
             self._refresh_profile_list()
@@ -1433,6 +1379,15 @@ class MainWindow:
                 repeats=waypoint.repeats,
                 relative_x=waypoint.relative_x,
                 relative_y=waypoint.relative_y,
+                target_x=waypoint.target_x,
+                target_y=waypoint.target_y,
+                target_z=waypoint.target_z,
+                waypoint_type=waypoint.waypoint_type,
+                label=waypoint.label,
+                waypoint_range=waypoint.waypoint_range,
+                wait_time_ms=waypoint.wait_time_ms,
+                action_key=waypoint.action_key,
+                section=waypoint.section,
             )
             for waypoint in profile.hunt.waypoints
         ]
@@ -1458,15 +1413,15 @@ class MainWindow:
         self._target_top_ratio_var.set(str(profile.rois.target_status.top_ratio))
         self._target_width_ratio_var.set(str(profile.rois.target_status.width_ratio))
         self._target_height_ratio_var.set(str(profile.rois.target_status.height_ratio))
+        self._memory_enabled_var.set(profile.memory.enabled)
+        self._memory_process_picker_var.set(profile.memory.process_name)
+        self._memory_process_name_var.set(f"memory executable: {profile.memory.process_name}")
         self._configure_global_hotkeys()
         self._refresh_latest_snapshot_review()
         self._refresh_snapshot_history_controls()
+        self._refresh_memory_process_options()
 
-    def _apply_preview(
-        self,
-        preview: SessionPreviewResult,
-        preview_profile: ProfileSettings | None = None,
-    ) -> None:
+    def _apply_preview(self, preview: SessionPreviewResult, preview_profile: ProfileSettings | None = None) -> None:
         profile_for_preview = preview_profile or self._profile
         if preview.error_message or preview.window is None or preview.calibration_snapshot is None:
             self._preview_window_var.set("window: unavailable")
@@ -1488,16 +1443,11 @@ class MainWindow:
         snapshot = preview.calibration_snapshot
         window = preview.window
         resolution_validation = preview.resolution_validation
-        self._preview_window_var.set(
-            f"window: {window.title} {window.width}x{window.height} at ({window.left}, {window.top})"
-        )
+        self._preview_window_var.set(f"window: {window.title} {window.width}x{window.height} at ({window.left}, {window.top})")
         self._preview_profile_resolution_var.set(
             f"profile resolution: {profile_for_preview.resolution_width}x{profile_for_preview.resolution_height} | ui_scale={profile_for_preview.ui_scale:.2f}"
         )
-        self._preview_resolution_validation_var.set(
-            "window validation: "
-            + (resolution_validation.message if resolution_validation is not None else "unavailable")
-        )
+        self._preview_resolution_validation_var.set("window validation: " + (resolution_validation.message if resolution_validation is not None else "unavailable"))
         if resolution_validation is None:
             roi_guidance = "unavailable"
         elif not resolution_validation.profile_resolution_set:
@@ -1507,50 +1457,21 @@ class MainWindow:
         else:
             roi_guidance = "do not recalibrate ROI until the window matches the profile resolution"
         self._preview_roi_guidance_var.set(f"roi guidance: {roi_guidance}")
-        self._preview_life_roi_var.set(
-            f"life roi: x={snapshot.life_bar.left}, y={snapshot.life_bar.top}, "
-            f"w={snapshot.life_bar.width}, h={snapshot.life_bar.height}"
-        )
-        self._preview_mana_roi_var.set(
-            f"mana roi: x={snapshot.mana_bar.left}, y={snapshot.mana_bar.top}, "
-            f"w={snapshot.mana_bar.width}, h={snapshot.mana_bar.height}"
-        )
-        self._preview_target_roi_var.set(
-            f"target roi: x={snapshot.target_status.left}, y={snapshot.target_status.top}, "
-            f"w={snapshot.target_status.width}, h={snapshot.target_status.height}"
-        )
+        self._preview_life_roi_var.set(f"life roi: x={snapshot.life_bar.left}, y={snapshot.life_bar.top}, w={snapshot.life_bar.width}, h={snapshot.life_bar.height}")
+        self._preview_mana_roi_var.set(f"mana roi: x={snapshot.mana_bar.left}, y={snapshot.mana_bar.top}, w={snapshot.mana_bar.width}, h={snapshot.mana_bar.height}")
+        self._preview_target_roi_var.set(f"target roi: x={snapshot.target_status.left}, y={snapshot.target_status.top}, w={snapshot.target_status.width}, h={snapshot.target_status.height}")
 
         life_preview = preview.life_preview
         mana_preview = preview.mana_preview
         target_preview = preview.target_preview
-        self._ocr_life_text_var.set(
-            "life OCR: "
-            + (life_preview.normalized_text if life_preview is not None and life_preview.normalized_text else "empty")
-        )
-        self._ocr_mana_text_var.set(
-            "mana OCR: "
-            + (mana_preview.normalized_text if mana_preview is not None and mana_preview.normalized_text else "empty")
-        )
+        self._ocr_life_text_var.set("life OCR: " + (life_preview.normalized_text if life_preview is not None and life_preview.normalized_text else "empty"))
+        self._ocr_mana_text_var.set("mana OCR: " + (mana_preview.normalized_text if mana_preview is not None and mana_preview.normalized_text else "empty"))
         self._preview_target_status_var.set(
-            "target status: "
-            + (
-                f"detected={target_preview.has_target} reason={target_preview.reason}"
-                if target_preview is not None
-                else "unavailable"
-            )
+            "target status: " + (f"detected={target_preview.has_target} reason={target_preview.reason}" if target_preview is not None else "unavailable")
         )
-        self._preview_target_text_var.set(
-            "target OCR: "
-            + (
-                target_preview.normalized_text if target_preview is not None and target_preview.normalized_text else "empty"
-            )
-        )
-        self._ocr_life_reading_var.set(
-            "life reading: " + (self._format_reading(life_preview.reading) if life_preview is not None else "unavailable")
-        )
-        self._ocr_mana_reading_var.set(
-            "mana reading: " + (self._format_reading(mana_preview.reading) if mana_preview is not None else "unavailable")
-        )
+        self._preview_target_text_var.set("target OCR: " + (target_preview.normalized_text if target_preview is not None and target_preview.normalized_text else "empty"))
+        self._ocr_life_reading_var.set("life reading: " + (self._format_reading(life_preview.reading) if life_preview is not None else "unavailable"))
+        self._ocr_mana_reading_var.set("mana reading: " + (self._format_reading(mana_preview.reading) if mana_preview is not None else "unavailable"))
 
         if self._preview_panel is not None:
             self._preview_panel.apply_images(
@@ -1574,37 +1495,17 @@ class MainWindow:
             self._append_output(f"Profile save failed: {error}\n")
 
     def _sync_form_into_profile(self, profile: ProfileSettings) -> None:
-        profile.thresholds.life_percent = self._parse_int(
-            self._life_percent_var.get(), minimum=1, maximum=100, field_name="Life %"
-        )
-        profile.thresholds.mana_percent = self._parse_int(
-            self._mana_percent_var.get(), minimum=1, maximum=100, field_name="Mana %"
-        )
-        profile.ui_scale = self._parse_float(
-            self._ui_scale_var.get(), minimum=0.5, field_name="UI scale"
-        )
-        profile.healing_loop.polling_interval_seconds = self._parse_float(
-            self._polling_interval_var.get(), minimum=0.01, field_name="Polling (s)"
-        )
-        profile.healing_loop.life_cooldown_seconds = self._parse_float(
-            self._life_cooldown_var.get(), minimum=0.01, field_name="Life cooldown (s)"
-        )
-        profile.healing_loop.mana_cooldown_seconds = self._parse_float(
-            self._mana_cooldown_var.get(), minimum=0.01, field_name="Mana cooldown (s)"
-        )
-        profile.healing_loop.bootstrap_cycle_limit = self._parse_int(
-            self._cycle_limit_var.get(), minimum=1, maximum=9999, field_name="Cycle limit"
-        )
+        profile.thresholds.life_percent = self._parse_int(self._life_percent_var.get(), minimum=1, maximum=100, field_name="Life %")
+        profile.thresholds.mana_percent = self._parse_int(self._mana_percent_var.get(), minimum=1, maximum=100, field_name="Mana %")
+        profile.ui_scale = self._parse_float(self._ui_scale_var.get(), minimum=0.5, field_name="UI scale")
+        profile.healing_loop.polling_interval_seconds = self._parse_float(self._polling_interval_var.get(), minimum=0.01, field_name="Polling (s)")
+        profile.healing_loop.life_cooldown_seconds = self._parse_float(self._life_cooldown_var.get(), minimum=0.01, field_name="Life cooldown (s)")
+        profile.healing_loop.mana_cooldown_seconds = self._parse_float(self._mana_cooldown_var.get(), minimum=0.01, field_name="Mana cooldown (s)")
+        profile.healing_loop.bootstrap_cycle_limit = self._parse_int(self._cycle_limit_var.get(), minimum=1, maximum=9999, field_name="Cycle limit")
         profile.healing_loop.continuous_mode = bool(self._continuous_mode_var.get())
-        profile.healing_loop.max_actions_per_minute = self._parse_int(
-            self._max_actions_per_minute_var.get(), minimum=1, maximum=999999, field_name="Max actions/min"
-        )
-        profile.healing_loop.max_consecutive_ocr_failures = self._parse_int(
-            self._max_consecutive_ocr_failures_var.get(), minimum=1, maximum=9999, field_name="Max OCR failures"
-        )
-        profile.healing_loop.max_window_missing_seconds = self._parse_float(
-            self._max_window_missing_seconds_var.get(), minimum=0.5, field_name="Window missing (s)"
-        )
+        profile.healing_loop.max_actions_per_minute = self._parse_int(self._max_actions_per_minute_var.get(), minimum=1, maximum=999999, field_name="Max actions/min")
+        profile.healing_loop.max_consecutive_ocr_failures = self._parse_int(self._max_consecutive_ocr_failures_var.get(), minimum=1, maximum=9999, field_name="Max OCR failures")
+        profile.healing_loop.max_window_missing_seconds = self._parse_float(self._max_window_missing_seconds_var.get(), minimum=0.5, field_name="Window missing (s)")
         profile.hotkeys.start_stop = self._start_stop_hotkey_var.get().strip().upper()
         profile.hotkeys.pause_resume = self._pause_resume_hotkey_var.get().strip().upper()
         profile.hotkeys.heal_life = self._heal_life_hotkey_var.get().strip().upper()
@@ -1613,35 +1514,17 @@ class MainWindow:
         profile.hotkeys.attack_primary = self._attack_hotkey_var.get().strip().upper()
         profile.hotkeys.attack_secondary = self._secondary_attack_hotkey_var.get().strip().upper()
         profile.buffs.haste_enabled = bool(self._haste_enabled_var.get())
-        profile.buffs.haste_interval_seconds = self._parse_float(
-            self._haste_interval_var.get(), minimum=0.01, field_name="Haste interval (s)"
-        )
-        profile.buffs.haste_cooldown_seconds = self._parse_float(
-            self._haste_cooldown_var.get(), minimum=0.01, field_name="Haste cooldown (s)"
-        )
+        profile.buffs.haste_interval_seconds = self._parse_float(self._haste_interval_var.get(), minimum=0.01, field_name="Haste interval (s)")
+        profile.buffs.haste_cooldown_seconds = self._parse_float(self._haste_cooldown_var.get(), minimum=0.01, field_name="Haste cooldown (s)")
         profile.combat.attack_enabled = bool(self._attack_enabled_var.get())
-        profile.combat.attack_cooldown_seconds = self._parse_float(
-            self._attack_cooldown_var.get(), minimum=0.01, field_name="Attack cooldown (s)"
-        )
+        profile.combat.attack_cooldown_seconds = self._parse_float(self._attack_cooldown_var.get(), minimum=0.01, field_name="Attack cooldown (s)")
         profile.combat.secondary_attack_enabled = bool(self._secondary_attack_enabled_var.get())
-        profile.combat.secondary_attack_cooldown_seconds = self._parse_float(
-            self._secondary_attack_cooldown_var.get(), minimum=0.01, field_name="Secondary cooldown (s)"
-        )
-        profile.combat.secondary_attack_after_primary_only = bool(
-            self._secondary_attack_after_primary_only_var.get()
-        )
-        profile.combat.secondary_attack_combo_window_seconds = self._parse_float(
-            self._secondary_attack_combo_window_var.get(), minimum=0.01, field_name="Secondary combo window (s)"
-        )
-        profile.combat.target_confirmation_cycles = self._parse_int(
-            self._target_confirmation_cycles_var.get(), minimum=1, maximum=20, field_name="Target confirmations"
-        )
-        profile.combat.target_stability_window = self._parse_int(
-            self._target_stability_window_var.get(), minimum=2, maximum=20, field_name="Stability window"
-        )
-        profile.combat.max_target_text_variants = self._parse_int(
-            self._max_target_text_variants_var.get(), minimum=1, maximum=20, field_name="Max text variants"
-        )
+        profile.combat.secondary_attack_cooldown_seconds = self._parse_float(self._secondary_attack_cooldown_var.get(), minimum=0.01, field_name="Secondary cooldown (s)")
+        profile.combat.secondary_attack_after_primary_only = bool(self._secondary_attack_after_primary_only_var.get())
+        profile.combat.secondary_attack_combo_window_seconds = self._parse_float(self._secondary_attack_combo_window_var.get(), minimum=0.01, field_name="Secondary combo window (s)")
+        profile.combat.target_confirmation_cycles = self._parse_int(self._target_confirmation_cycles_var.get(), minimum=1, maximum=20, field_name="Target confirmations")
+        profile.combat.target_stability_window = self._parse_int(self._target_stability_window_var.get(), minimum=2, maximum=20, field_name="Stability window")
+        profile.combat.max_target_text_variants = self._parse_int(self._max_target_text_variants_var.get(), minimum=1, maximum=20, field_name="Max text variants")
         if (
             not profile.hotkeys.start_stop
             or not profile.hotkeys.pause_resume
@@ -1655,11 +1538,7 @@ class MainWindow:
 
         profile.hunt.enabled = bool(self._hunt_enabled_var.get())
         profile.hunt.loop_route = bool(self._hunt_loop_route_var.get())
-        profile.hunt.waypoint_interval_seconds = self._parse_float(
-            self._hunt_waypoint_interval_var.get(),
-            minimum=0.01,
-            field_name="Hunt waypoint interval (s)",
-        )
+        profile.hunt.waypoint_interval_seconds = self._parse_float(self._hunt_waypoint_interval_var.get(), minimum=0.01, field_name="Hunt waypoint interval (s)")
         profile.hunt.move_up_hotkey = self._hunt_move_up_hotkey_var.get().strip().upper()
         profile.hunt.move_down_hotkey = self._hunt_move_down_hotkey_var.get().strip().upper()
         profile.hunt.move_left_hotkey = self._hunt_move_left_hotkey_var.get().strip().upper()
@@ -1670,66 +1549,51 @@ class MainWindow:
                 repeats=waypoint.repeats,
                 relative_x=waypoint.relative_x,
                 relative_y=waypoint.relative_y,
+                target_x=waypoint.target_x,
+                target_y=waypoint.target_y,
+                target_z=waypoint.target_z,
+                waypoint_type=waypoint.waypoint_type,
+                label=waypoint.label,
+                waypoint_range=waypoint.waypoint_range,
+                wait_time_ms=waypoint.wait_time_ms,
+                action_key=waypoint.action_key,
+                section=waypoint.section,
             )
             for waypoint in self._hunt_waypoints
         ]
 
+        profile.memory.enabled = bool(self._memory_enabled_var.get())
+        selected_process_name = self._memory_process_picker_var.get().strip() or self._profile.memory.process_name
+        profile.memory.process_name = selected_process_name
+        self._memory_process_name_var.set(f"memory executable: {selected_process_name or 'unselected'}")
+
         if profile.hunt.enabled and not profile.hunt.waypoints:
             raise ValueError("Hunt enabled requires at least one waypoint.")
 
-        if (
-            profile.hunt.enabled
-            and (
-                not profile.hunt.move_up_hotkey
-                or not profile.hunt.move_down_hotkey
-                or not profile.hunt.move_left_hotkey
-                or not profile.hunt.move_right_hotkey
-            )
+        if profile.hunt.enabled and (
+            not profile.hunt.move_up_hotkey
+            or not profile.hunt.move_down_hotkey
+            or not profile.hunt.move_left_hotkey
+            or not profile.hunt.move_right_hotkey
         ):
             raise ValueError("Hunt movement hotkeys cannot be empty.")
 
         self._sync_roi_form_into_profile(profile)
 
     def _sync_roi_form_into_profile(self, profile: ProfileSettings) -> None:
-        profile.ui_scale = self._parse_float(
-            self._ui_scale_var.get(), minimum=0.5, field_name="UI scale"
-        )
-        profile.rois.life_bar.left_ratio = self._parse_ratio(
-            self._life_left_ratio_var.get(), field_name="Life ROI left"
-        )
-        profile.rois.life_bar.top_ratio = self._parse_ratio(
-            self._life_top_ratio_var.get(), field_name="Life ROI top"
-        )
-        profile.rois.life_bar.width_ratio = self._parse_ratio(
-            self._life_width_ratio_var.get(), field_name="Life ROI width", allow_zero=False
-        )
-        profile.rois.life_bar.height_ratio = self._parse_ratio(
-            self._life_height_ratio_var.get(), field_name="Life ROI height", allow_zero=False
-        )
-        profile.rois.mana_bar.left_ratio = self._parse_ratio(
-            self._mana_left_ratio_var.get(), field_name="Mana ROI left"
-        )
-        profile.rois.mana_bar.top_ratio = self._parse_ratio(
-            self._mana_top_ratio_var.get(), field_name="Mana ROI top"
-        )
-        profile.rois.mana_bar.width_ratio = self._parse_ratio(
-            self._mana_width_ratio_var.get(), field_name="Mana ROI width", allow_zero=False
-        )
-        profile.rois.mana_bar.height_ratio = self._parse_ratio(
-            self._mana_height_ratio_var.get(), field_name="Mana ROI height", allow_zero=False
-        )
-        profile.rois.target_status.left_ratio = self._parse_ratio(
-            self._target_left_ratio_var.get(), field_name="Target ROI left"
-        )
-        profile.rois.target_status.top_ratio = self._parse_ratio(
-            self._target_top_ratio_var.get(), field_name="Target ROI top"
-        )
-        profile.rois.target_status.width_ratio = self._parse_ratio(
-            self._target_width_ratio_var.get(), field_name="Target ROI width", allow_zero=False
-        )
-        profile.rois.target_status.height_ratio = self._parse_ratio(
-            self._target_height_ratio_var.get(), field_name="Target ROI height", allow_zero=False
-        )
+        profile.ui_scale = self._parse_float(self._ui_scale_var.get(), minimum=0.5, field_name="UI scale")
+        profile.rois.life_bar.left_ratio = self._parse_ratio(self._life_left_ratio_var.get(), field_name="Life ROI left")
+        profile.rois.life_bar.top_ratio = self._parse_ratio(self._life_top_ratio_var.get(), field_name="Life ROI top")
+        profile.rois.life_bar.width_ratio = self._parse_ratio(self._life_width_ratio_var.get(), field_name="Life ROI width", allow_zero=False)
+        profile.rois.life_bar.height_ratio = self._parse_ratio(self._life_height_ratio_var.get(), field_name="Life ROI height", allow_zero=False)
+        profile.rois.mana_bar.left_ratio = self._parse_ratio(self._mana_left_ratio_var.get(), field_name="Mana ROI left")
+        profile.rois.mana_bar.top_ratio = self._parse_ratio(self._mana_top_ratio_var.get(), field_name="Mana ROI top")
+        profile.rois.mana_bar.width_ratio = self._parse_ratio(self._mana_width_ratio_var.get(), field_name="Mana ROI width", allow_zero=False)
+        profile.rois.mana_bar.height_ratio = self._parse_ratio(self._mana_height_ratio_var.get(), field_name="Mana ROI height", allow_zero=False)
+        profile.rois.target_status.left_ratio = self._parse_ratio(self._target_left_ratio_var.get(), field_name="Target ROI left")
+        profile.rois.target_status.top_ratio = self._parse_ratio(self._target_top_ratio_var.get(), field_name="Target ROI top")
+        profile.rois.target_status.width_ratio = self._parse_ratio(self._target_width_ratio_var.get(), field_name="Target ROI width", allow_zero=False)
+        profile.rois.target_status.height_ratio = self._parse_ratio(self._target_height_ratio_var.get(), field_name="Target ROI height", allow_zero=False)
 
     def _build_preview_profile_from_form(self) -> ProfileSettings:
         preview_profile = copy.deepcopy(self._profile)
@@ -1751,14 +1615,10 @@ class MainWindow:
                 self._append_output("ROI calibration save failed: resolution validation unavailable.\n")
                 return
             if not resolution_validation.profile_resolution_set:
-                self._append_output(
-                    "ROI calibration blocked: adopt the current window as baseline before saving ROI.\n"
-                )
+                self._append_output("ROI calibration blocked: adopt the current window as baseline before saving ROI.\n")
                 return
             if not resolution_validation.matches_profile:
-                self._append_output(
-                    f"ROI calibration blocked: {resolution_validation.message}.\n"
-                )
+                self._append_output(f"ROI calibration blocked: {resolution_validation.message}.\n")
                 return
             save_profile(self._profile_path, self._profile)
             self._append_output(f"ROI calibration saved to {self._profile_path}.\n")
@@ -1827,16 +1687,11 @@ class MainWindow:
 
     @staticmethod
     def _format_result(result: SessionRunResult) -> str:
-        parts = [
-            f"Session finished with status={result.status.state}",
-            f"message={result.status.message}",
-        ]
+        parts = [f"Session finished with status={result.status.state}", f"message={result.status.message}"]
         if result.error_message:
             parts.append(f"error={result.error_message}")
         if result.window is not None:
-            parts.append(
-                f"window={result.window.title} {result.window.width}x{result.window.height}"
-            )
+            parts.append(f"window={result.window.title} {result.window.width}x{result.window.height}")
         if result.resolution_validation is not None:
             parts.append(f"resolution_validation={result.resolution_validation.message}")
         if result.healing_loop_result is not None:
@@ -1844,24 +1699,13 @@ class MainWindow:
             parts.append(f"terminated_early={result.healing_loop_result.terminated_early}")
             parts.append(f"termination_reason={result.healing_loop_result.termination_reason}")
             parts.append(f"fail_safe_triggered={result.healing_loop_result.fail_safe_triggered}")
-            parts.append(
-                f"target_detected={result.healing_loop_result.last_cycle.has_target if result.healing_loop_result.last_cycle else None}"
-            )
-            parts.append(
-                f"target_confirmed={result.healing_loop_result.last_cycle.target_confirmed if result.healing_loop_result.last_cycle else None}"
-            )
-            parts.append(
-                f"target_oscillating={result.healing_loop_result.last_cycle.target_oscillating if result.healing_loop_result.last_cycle else None}"
-            )
-            parts.append(
-                f"target_reason={result.healing_loop_result.last_cycle.target_reason if result.healing_loop_result.last_cycle else None}"
-            )
-            parts.append(
-                f"attack_status={result.healing_loop_result.last_cycle.attack_status if result.healing_loop_result.last_cycle else None}"
-            )
-            parts.append(
-                f"secondary_attack_status={result.healing_loop_result.last_cycle.secondary_attack_status if result.healing_loop_result.last_cycle else None}"
-            )
+            parts.append(f"target_detected={result.healing_loop_result.last_cycle.has_target if result.healing_loop_result.last_cycle else None}")
+            parts.append(f"target_confirmed={result.healing_loop_result.last_cycle.target_confirmed if result.healing_loop_result.last_cycle else None}")
+            parts.append(f"target_oscillating={result.healing_loop_result.last_cycle.target_oscillating if result.healing_loop_result.last_cycle else None}")
+            parts.append(f"target_reason={result.healing_loop_result.last_cycle.target_reason if result.healing_loop_result.last_cycle else None}")
+            parts.append(f"attack_status={result.healing_loop_result.last_cycle.attack_status if result.healing_loop_result.last_cycle else None}")
+            parts.append(f"secondary_attack_status={result.healing_loop_result.last_cycle.secondary_attack_status if result.healing_loop_result.last_cycle else None}")
+            parts.append(f"current_section={result.healing_loop_result.last_cycle.current_section if result.healing_loop_result.last_cycle else None}")
             parts.append(f"last_cycle={result.healing_loop_result.last_cycle}")
         return "\n".join(parts) + "\n\n"
 
@@ -1869,10 +1713,7 @@ class MainWindow:
     def _format_reading(reading) -> str:
         if reading is None:
             return "unavailable"
-        return (
-            f"{reading.current}/{reading.maximum} "
-            f"({reading.percentage:.1f}%) source='{reading.source_text}'"
-        )
+        return f"{reading.current}/{reading.maximum} ({reading.percentage:.1f}%) source='{reading.source_text}'"
 
     @staticmethod
     def _format_actions(actions) -> str:
@@ -1941,9 +1782,7 @@ class MainWindow:
                 move_right_hotkey=self._hunt_move_right_hotkey_var.get(),
             )
             self._hunt_recording_status_var.set("hunt recording: recording from origin (0, 0)")
-            self._append_output(
-                "Hunt recording started. Move the character manually in the game and then click Stop recording.\n"
-            )
+            self._append_output("Hunt recording started. Move the character manually in the game and then click Stop recording.\n")
         except (RuntimeError, ValueError) as error:
             self._append_output(f"Hunt recording start failed: {error}\n")
 
@@ -1963,24 +1802,18 @@ class MainWindow:
         total_steps = sum(waypoint.repeats for waypoint in self._hunt_waypoints)
         if self._hunt_waypoints:
             last = self._hunt_waypoints[-1]
-            self._hunt_recording_status_var.set(
-                f"hunt recording: stopped | steps={total_steps} | end=({last.relative_x}, {last.relative_y})"
-            )
+            self._hunt_recording_status_var.set(f"hunt recording: stopped | steps={total_steps} | end=({last.relative_x}, {last.relative_y})")
         else:
             self._hunt_recording_status_var.set("hunt recording: stopped | no movement captured")
 
-        self._append_output(
-            f"Hunt recording stopped. Captured waypoints={len(self._hunt_waypoints)} | steps={total_steps}\n"
-        )
+        self._append_output(f"Hunt recording stopped. Captured waypoints={len(self._hunt_waypoints)} | steps={total_steps}\n")
 
     def _refresh_hunt_recording_status(self) -> None:
         snapshot = self._hunt_recorder.snapshot()
         if not snapshot.is_recording:
             return
 
-        self._hunt_recording_status_var.set(
-            f"hunt recording: REC | steps={snapshot.total_steps} | pos=({snapshot.relative_x}, {snapshot.relative_y})"
-        )
+        self._hunt_recording_status_var.set(f"hunt recording: REC | steps={snapshot.total_steps} | pos=({snapshot.relative_x}, {snapshot.relative_y})")
         self._hunt_route_preview_var.set(self._format_hunt_waypoints(list(snapshot.waypoints)))
 
     def _refresh_hunt_route_preview(self) -> None:
@@ -2000,33 +1833,29 @@ class MainWindow:
             last.relative_y = next_y
             return
 
-        self._hunt_waypoints.append(
-            HuntWaypoint(
-                direction=direction,
-                repeats=1,
-                relative_x=next_x,
-                relative_y=next_y,
-            )
-        )
+        self._hunt_waypoints.append(HuntWaypoint(direction=direction, repeats=1, relative_x=next_x, relative_y=next_y))
 
     @staticmethod
     def _hunt_direction_delta(direction: str) -> tuple[int, int]:
-        mapping = {
-            "UP": (0, -1),
-            "DOWN": (0, 1),
-            "LEFT": (-1, 0),
-            "RIGHT": (1, 0),
-        }
+        mapping = {"UP": (0, -1), "DOWN": (0, 1), "LEFT": (-1, 0), "RIGHT": (1, 0)}
         return mapping[direction]
 
     @staticmethod
     def _format_hunt_waypoints(waypoints: list[HuntWaypoint]) -> str:
         if not waypoints:
             return "No waypoints configured."
-        parts = [
-            f"{index + 1}:{waypoint.direction}x{waypoint.repeats}@({waypoint.relative_x},{waypoint.relative_y})"
-            for index, waypoint in enumerate(waypoints)
-        ]
+        parts = []
+        for index, waypoint in enumerate(waypoints):
+            target = f" target=({waypoint.target_x},{waypoint.target_y},{waypoint.target_z})" if waypoint.target_x is not None and waypoint.target_y is not None else ""
+            extras = []
+            if waypoint.label:
+                extras.append(f"label={waypoint.label}")
+            if waypoint.section:
+                extras.append(f"section={waypoint.section}")
+            if waypoint.waypoint_type:
+                extras.append(f"type={waypoint.waypoint_type}")
+            suffix = f" [{' | '.join(extras)}]" if extras else ""
+            parts.append(f"{index + 1}:{waypoint.direction}x{waypoint.repeats}@({waypoint.relative_x},{waypoint.relative_y}){target}{suffix}")
         return " | ".join(parts)
 
     def run(self) -> None:
