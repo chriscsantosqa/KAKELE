@@ -31,6 +31,7 @@ class AiVisionSettings:
 class HotkeysSettings:
     start_stop: str = "F8"
     pause_resume: str = "F9"
+    toggle_hunt: str = "F10"
     heal_life: str = "F1"
     heal_mana: str = "F2"
     buff_haste: str = "F3"
@@ -223,6 +224,7 @@ def _load_hotkeys(raw: dict) -> HotkeysSettings:
     return HotkeysSettings(
         start_stop=_coerce_str(raw.get("start_stop"), defaults.start_stop),
         pause_resume=_coerce_str(raw.get("pause_resume"), defaults.pause_resume),
+        toggle_hunt=_coerce_str(raw.get("toggle_hunt"), defaults.toggle_hunt),
         heal_life=_coerce_str(raw.get("heal_life"), defaults.heal_life),
         heal_mana=_coerce_str(raw.get("heal_mana"), defaults.heal_mana),
         buff_haste=_coerce_str(raw.get("buff_haste"), defaults.buff_haste),
