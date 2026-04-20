@@ -110,6 +110,8 @@ class HealingRuntime:
         hunt_move_down_hotkey: str,
         hunt_move_left_hotkey: str,
         hunt_move_right_hotkey: str,
+        hunt_use_coordinate_navigation: bool,
+        hunt_coordinate_tolerance: int,
         hunt_waypoints: list[HuntWaypoint],
         memory_enabled: bool,
         memory_prefer_for_healing: bool,
@@ -117,7 +119,6 @@ class HealingRuntime:
         memory_prefer_for_cavebot: bool,
         memory_process_name: str,
     ) -> HealingCycleResult:
-
         whole_window_image = self._capture.capture_window(window)
 
         life_image = self._crop(window, whole_window_image, snapshot.life_bar)
@@ -245,6 +246,9 @@ class HealingRuntime:
                     move_down_hotkey=hunt_move_down_hotkey,
                     move_left_hotkey=hunt_move_left_hotkey,
                     move_right_hotkey=hunt_move_right_hotkey,
+                    use_coordinate_navigation=hunt_use_coordinate_navigation,
+                    coordinate_tolerance=hunt_coordinate_tolerance,
+                    player_position=player_position,
                     waypoints=hunt_waypoints,
                     now=self._time_provider(),
                 )
