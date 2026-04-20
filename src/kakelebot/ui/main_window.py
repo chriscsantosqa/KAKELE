@@ -340,6 +340,7 @@ class MainWindow:
             hunt_move_left_hotkey_var=self._hunt_move_left_hotkey_var,
             hunt_move_right_hotkey_var=self._hunt_move_right_hotkey_var,
             hunt_route_preview_var=self._hunt_route_preview_var,
+            hunt_recording_status_var=self._hunt_recording_status_var,
             on_add_hunt_up=lambda: self._on_add_hunt_waypoint("UP"),
             on_add_hunt_down=lambda: self._on_add_hunt_waypoint("DOWN"),
             on_add_hunt_left=lambda: self._on_add_hunt_waypoint("LEFT"),
@@ -1593,36 +1594,6 @@ class MainWindow:
         profile.hunt.move_left_hotkey = self._hunt_move_left_hotkey_var.get().strip().upper()
         profile.hunt.move_right_hotkey = self._hunt_move_right_hotkey_var.get().strip().upper()
         profile.hunt.waypoints = [
-            HuntWaypoint(direction=waypoint.direction, repeats=waypoint.repeats)
-            for waypoint in self._hunt_waypoints
-        ]
-
-        if profile.hunt.enabled and not profile.hunt.waypoints:
-            raise ValueError("Hunt enabled requires at least one waypoint.")
-
-        if (
-            profile.hunt.enabled
-            and (
-                not profile.hunt.move_up_hotkey
-                or not profile.hunt.move_down_hotkey
-                or not profile.hunt.move_left_hotkey
-                or not profile.hunt.move_right_hotkey
-            )
-        ):
-            raise ValueError("Hunt movement hotkeys cannot be empty.")
-        
-        profile.hunt.enabled = bool(self._hunt_enabled_var.get())
-        profile.hunt.loop_route = bool(self._hunt_loop_route_var.get())
-        profile.hunt.waypoint_interval_seconds = self._parse_float(
-            self._hunt_waypoint_interval_var.get(),
-            minimum=0.01,
-            field_name="Hunt waypoint interval (s)",
-        )
-        profile.hunt.move_up_hotkey = self._hunt_move_up_hotkey_var.get().strip().upper()
-        profile.hunt.move_down_hotkey = self._hunt_move_down_hotkey_var.get().strip().upper()
-        profile.hunt.move_left_hotkey = self._hunt_move_left_hotkey_var.get().strip().upper()
-        profile.hunt.move_right_hotkey = self._hunt_move_right_hotkey_var.get().strip().upper()
-        profile.hunt.waypoints = [
             HuntWaypoint(
                 direction=waypoint.direction,
                 repeats=waypoint.repeats,
@@ -1860,29 +1831,6 @@ class MainWindow:
             comparator = "between 0.0 and 1.0" if allow_zero else "between >0.0 and 1.0"
             raise ValueError(f"{field_name} must be {comparator}.")
         return value
-
-    def _on_add_hunt_waypoint(self, direction: str) -> None:
-        self._hunt_waypoints.append(HuntWaypoint(direction=direction, repeats=1))
-        self._refresh_hunt_route_preview()
-
-    def _on_remove_last_hunt_waypoint(self) -> None:
-        if self._hunt_waypoints:
-            self._hunt_waypoints.pop()
-        self._refresh_hunt_route_preview()
-
-    def _on_clear_hunt_waypoints(self) -> None:
-        self._hunt_waypoints.clear()
-        self._refresh_hunt_route_preview()
-
-    def _refresh_hunt_route_preview(self) -> None:
-        self._hunt_route_preview_var.set(self._format_hunt_waypoints(self._hunt_waypoints))
-
-    @staticmethod
-    def _format_hunt_waypoints(waypoints: list[HuntWaypoint]) -> str:
-        if not waypoints:
-            return "No waypoints configured."
-        parts = [f"{waypoint.direction}x{waypoint.repeats}" for waypoint in waypoints]
-        return " -> ".join(parts)
 
     def _on_add_hunt_waypoint(self, direction: str) -> None:
         self._append_hunt_direction(direction)
