@@ -18,6 +18,8 @@ class GlobalHotkeyService:
         pause_resume_hotkey: str,
         on_start_stop: Callable[[], None],
         on_pause_resume: Callable[[], None],
+        toggle_hunt_hotkey: str | None = None,
+        on_toggle_hunt: Callable[[], None] | None = None,
     ) -> None:
         if keyboard is None:
             raise RuntimeError("pynput is not installed.")
@@ -25,6 +27,9 @@ class GlobalHotkeyService:
         bindings: dict[str, Callable[[], None]] = {}
         bindings[self._normalize_hotkey(start_stop_hotkey)] = on_start_stop
         bindings[self._normalize_hotkey(pause_resume_hotkey)] = on_pause_resume
+
+        if toggle_hunt_hotkey and on_toggle_hunt:
+            bindings[self._normalize_hotkey(toggle_hunt_hotkey)] = on_toggle_hunt
 
         self.stop()
         self._listener = keyboard.GlobalHotKeys(bindings)
