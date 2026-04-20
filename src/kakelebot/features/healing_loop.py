@@ -41,6 +41,7 @@ class HealingLoopRunner:
         should_continue: Callable[[], bool] | None = None,
         is_paused: Callable[[], bool] | None = None,
         is_cavebot_active: Callable[[], bool] | None = None,
+        on_cycle: Callable[[HealingCycleResult, int], None] | None = None,
     ) -> HealingLoopResult:
         last_cycle: HealingCycleResult | None = None
         cycles_completed = 0
@@ -134,6 +135,9 @@ class HealingLoopRunner:
             )
             cycles_completed += 1
             cycle_index += 1
+
+            if on_cycle is not None:
+                on_cycle(last_cycle, cycles_completed)
 
             if last_cycle.life_reading is None and last_cycle.mana_reading is None:
                 consecutive_ocr_failures += 1
