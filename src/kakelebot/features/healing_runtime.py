@@ -8,13 +8,14 @@ from kakelebot.core.calibration import CalibrationSnapshot
 from kakelebot.core.capture import CaptureService
 from kakelebot.core.game_state import GameStateService
 from kakelebot.core.memory import MemoryReadResult, MemoryService
-from kakelebot.core.config import HuntWaypoint
+from kakelebot.core.config import HuntWaypoint, SpecialArea
 from kakelebot.core.input import InputService, KeyAction
 from kakelebot.core.vision import BarReading, VisionService
 from kakelebot.core.window import WindowInfo
 from kakelebot.features.healing import HealingDecision, HealingService
 from kakelebot.features.hunt_runtime import HuntCycleAction, HuntRuntime
 from kakelebot.features.skill_policy import SecondarySkillPolicyService
+from kakelebot.features.special_areas import SpecialAreaService
 from kakelebot.features.targeting import TargetPolicyService
 
 
@@ -53,6 +54,7 @@ class HealingRuntime:
         game_state_service: GameStateService | None = None,
         target_policy_service: TargetPolicyService | None = None,
         secondary_skill_policy_service: SecondarySkillPolicyService | None = None,
+        special_area_service: SpecialAreaService | None = None,
     ) -> None:
         self._capture = capture_service
         self._vision = vision_service
@@ -62,6 +64,7 @@ class HealingRuntime:
         self._game_state = game_state_service or GameStateService()
         self._target_policy = target_policy_service or TargetPolicyService()
         self._secondary_skill_policy = secondary_skill_policy_service or SecondarySkillPolicyService()
+        self._special_area_service = special_area_service or SpecialAreaService()
         self._hunt = HuntRuntime()
         self._time_provider = time.monotonic
         self._recent_target_observations: deque[tuple[bool, str]] = deque(maxlen=12)
@@ -70,6 +73,8 @@ class HealingRuntime:
         self._last_haste_at: float | None = None
         self._last_attack_at: float | None = None
         self._last_secondary_attack_at: float | None = None
+        self._active_special_area_name: str | None = None
+        self._special_area_hold_until: float | None = None
 
     def execute_cycle(
         self,
@@ -113,6 +118,7 @@ class HealingRuntime:
         hunt_use_coordinate_navigation: bool,
         hunt_coordinate_tolerance: int,
         hunt_waypoints: list[HuntWaypoint],
+        hunt_special_areas: list[SpecialArea],
         memory_enabled: bool,
         memory_prefer_for_healing: bool,
         memory_prefer_for_target: bool,
@@ -232,11 +238,20 @@ class HealingRuntime:
 
         hunt_status = "disabled"
         player_position = game_state.navigation.player_position
+        active_special_area = self._special_area_service.match(
+            player_position=player_position,
+            special_areas=hunt_special_areas,
+        )
+        self._update_special_area_hold(active_special_area=active_special_area, now=now)
 
         if hunt_enabled:
             if valid_target:
                 suppressed.append("hunt-paused-during-target")
                 hunt_status = "paused-during-target"
+            elif self._special_area_is_holding(now):
+                area_name = self._active_special_area_name or "unnamed-area"
+                suppressed.append(f"special-area-hold:{area_name}")
+                hunt_status = f"special-area-wait:{area_name}"
             else:
                 cycle = self._hunt.next_action(
                     enabled=True,
@@ -304,6 +319,23 @@ class HealingRuntime:
         if not enabled or self._memory is None:
             return None
         return self._memory.try_get_player_state()
+
+    def _update_special_area_hold(self, *, active_special_area, now: float) -> None:
+        if active_special_area is None:
+            self._active_special_area_name = None
+            self._special_area_hold_until = None
+            return
+
+        area_name = active_special_area.area.name
+        if self._active_special_area_name != area_name:
+            self._active_special_area_name = area_name
+            hold_ms = max(0, active_special_area.wait_time_ms)
+            self._special_area_hold_until = now + (hold_ms / 1000.0)
+
+    def _special_area_is_holding(self, now: float) -> bool:
+        if self._special_area_hold_until is None:
+            return False
+        return now < self._special_area_hold_until
 
     def _build_stuck_recovery_action(
         self,
