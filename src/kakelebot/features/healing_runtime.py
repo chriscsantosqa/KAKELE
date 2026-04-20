@@ -14,6 +14,7 @@ from kakelebot.core.vision import BarReading, VisionService
 from kakelebot.core.window import WindowInfo
 from kakelebot.features.healing import HealingDecision, HealingService
 from kakelebot.features.hunt_runtime import HuntCycleAction, HuntRuntime
+from kakelebot.features.skill_policy import SecondarySkillPolicyService
 from kakelebot.features.targeting import TargetPolicyService
 
 
@@ -51,6 +52,7 @@ class HealingRuntime:
         memory_service: MemoryService | None = None,
         game_state_service: GameStateService | None = None,
         target_policy_service: TargetPolicyService | None = None,
+        secondary_skill_policy_service: SecondarySkillPolicyService | None = None,
     ) -> None:
         self._capture = capture_service
         self._vision = vision_service
@@ -59,6 +61,7 @@ class HealingRuntime:
         self._memory = memory_service
         self._game_state = game_state_service or GameStateService()
         self._target_policy = target_policy_service or TargetPolicyService()
+        self._secondary_skill_policy = secondary_skill_policy_service or SecondarySkillPolicyService()
         self._hunt = HuntRuntime()
         self._time_provider = time.monotonic
         self._recent_target_observations: deque[tuple[bool, str]] = deque(maxlen=12)
@@ -86,6 +89,9 @@ class HealingRuntime:
         secondary_attack_cooldown_seconds: float,
         secondary_attack_after_primary_only: bool,
         secondary_attack_combo_window_seconds: float,
+        secondary_attack_allowed_target_texts: list[str],
+        secondary_attack_blocked_target_texts: list[str],
+        secondary_attack_require_target_text_match: bool,
         target_confirmation_cycles: int,
         target_stability_window: int,
         max_target_text_variants: int,
@@ -194,6 +200,13 @@ class HealingRuntime:
 
         secondary_attack_status = "disabled"
         if secondary_attack_enabled:
+            secondary_skill_evaluation = self._secondary_skill_policy.evaluate(
+                target_evaluation=target_evaluation,
+                allowed_target_texts=secondary_attack_allowed_target_texts,
+                blocked_target_texts=secondary_attack_blocked_target_texts,
+                require_target_text_match=secondary_attack_require_target_text_match,
+            )
+
             allowed_by_primary_rule = True
             if secondary_attack_after_primary_only:
                 allowed_by_primary_rule = (
@@ -201,8 +214,8 @@ class HealingRuntime:
                     and (now - self._last_attack_at) <= secondary_attack_combo_window_seconds
                 )
 
-            if not valid_target:
-                secondary_attack_status = target_evaluation.failure_reason
+            if not secondary_skill_evaluation.allowed:
+                secondary_attack_status = secondary_skill_evaluation.reason
             elif not allowed_by_primary_rule:
                 secondary_attack_status = "waiting-primary"
             elif self._can_use_interval(
