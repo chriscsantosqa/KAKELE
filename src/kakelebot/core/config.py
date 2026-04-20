@@ -149,6 +149,8 @@ class MemoryAddressSettings:
     z: MemoryAddressFieldSettings = field(default_factory=MemoryAddressFieldSettings)
     has_target: MemoryAddressFieldSettings = field(default_factory=MemoryAddressFieldSettings)
     target_id: MemoryAddressFieldSettings = field(default_factory=MemoryAddressFieldSettings)
+    level: MemoryAddressFieldSettings = field(default_factory=MemoryAddressFieldSettings)
+    exp: MemoryAddressFieldSettings = field(default_factory=MemoryAddressFieldSettings)
 
 
 @dataclass(slots=True)
@@ -516,6 +518,8 @@ def _load_memory_addresses(raw: dict) -> MemoryAddressSettings:
         z=_load_memory_address_field(raw.get("z")),
         has_target=_load_memory_address_field(raw.get("has_target")),
         target_id=_load_memory_address_field(raw.get("target_id")),
+        level=_load_memory_address_field(raw.get("level")),
+        exp=_load_memory_address_field(raw.get("exp")),
     )
 
 
