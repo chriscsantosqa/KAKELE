@@ -98,6 +98,20 @@ class HuntWaypoint:
 
 
 @dataclass(slots=True)
+class SpecialArea:
+    name: str
+    x: int
+    y: int
+    z: int
+    width: int = 1
+    height: int = 1
+    policy: str = "none"
+    wait_time_min_ms: int = 0
+    wait_time_max_ms: int = 0
+    comment: str = ""
+
+
+@dataclass(slots=True)
 class HuntSettings:
     enabled: bool = False
     loop_route: bool = True
@@ -109,6 +123,7 @@ class HuntSettings:
     use_coordinate_navigation: bool = False
     coordinate_tolerance: int = 0
     waypoints: list[HuntWaypoint] = field(default_factory=list)
+    special_areas: list[SpecialArea] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -398,6 +413,33 @@ def _load_healing_loop(raw: dict) -> HealingLoopSettings:
     )
 
 
+def _load_special_areas(raw: object) -> list[SpecialArea]:
+    if not isinstance(raw, list):
+        return []
+    special_areas: list[SpecialArea] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = _coerce_str(item.get("name"), "")
+        if not name:
+            continue
+        special_areas.append(
+            SpecialArea(
+                name=name,
+                x=_coerce_int(item.get("x"), 0),
+                y=_coerce_int(item.get("y"), 0),
+                z=_coerce_int(item.get("z"), 0),
+                width=max(1, _coerce_int(item.get("width"), 1)),
+                height=max(1, _coerce_int(item.get("height"), 1)),
+                policy=_coerce_str(item.get("policy"), "none"),
+                wait_time_min_ms=max(0, _coerce_int(item.get("wait_time_min_ms"), 0)),
+                wait_time_max_ms=max(0, _coerce_int(item.get("wait_time_max_ms"), 0)),
+                comment=_coerce_str(item.get("comment"), ""),
+            )
+        )
+    return special_areas
+
+
 def _load_hunt(raw: dict) -> HuntSettings:
     defaults = HuntSettings()
     raw_waypoints = raw.get("waypoints") or []
@@ -438,6 +480,7 @@ def _load_hunt(raw: dict) -> HuntSettings:
         ),
         coordinate_tolerance=max(0, _coerce_int(raw.get("coordinate_tolerance"), defaults.coordinate_tolerance)),
         waypoints=waypoints,
+        special_areas=_load_special_areas(raw.get("special_areas")),
     )
 
 
