@@ -25,7 +25,7 @@ class HuntRuntime:
         "LEFT": (-1, 0),
         "RIGHT": (1, 0),
     }
-
+    _RESYNC_DISTANCE_THRESHOLD = 6
     _MOVEMENT_HOLD_SECONDS = 0.035
 
     def __init__(self) -> None:
@@ -85,6 +85,14 @@ class HuntRuntime:
             for waypoint in waypoints
         )
         self._reset_if_route_changed(route_signature)
+
+        if use_coordinate_navigation and player_position is not None:
+            if self._try_resync_to_nearest_waypoint(
+                player_position=player_position,
+                waypoints=waypoints,
+                coordinate_tolerance=coordinate_tolerance,
+            ):
+                self._last_waypoint_at = None
 
         current_section = self._current_section(waypoints)
 
@@ -377,6 +385,58 @@ class HuntRuntime:
             current_waypoint_index=current_waypoint_index,
             total_waypoints=total_waypoints,
             current_section=waypoint.section,
+        )
+
+    def _try_resync_to_nearest_waypoint(
+        self,
+        *,
+        player_position: tuple[int, int, int],
+        waypoints: list[HuntWaypoint],
+        coordinate_tolerance: int,
+    ) -> bool:
+        current_waypoint = waypoints[min(max(self._waypoint_index, 0), len(waypoints) - 1)]
+        if not self._waypoint_has_coordinates(current_waypoint):
+            return False
+
+        current_distance = self._waypoint_distance(player_position, current_waypoint)
+        tolerance = max(coordinate_tolerance, max(0, current_waypoint.waypoint_range - 1))
+        if current_distance <= max(tolerance, self._RESYNC_DISTANCE_THRESHOLD):
+            return False
+
+        nearest_index = self._nearest_waypoint_index(player_position, waypoints)
+        if nearest_index is None or nearest_index == self._waypoint_index:
+            return False
+
+        self._waypoint_index = nearest_index
+        self._waypoint_repeat_progress = 0
+        self._clear_waypoint_operation_state()
+        return True
+
+    def _nearest_waypoint_index(
+        self,
+        player_position: tuple[int, int, int],
+        waypoints: list[HuntWaypoint],
+    ) -> int | None:
+        best_index: int | None = None
+        best_distance: int | None = None
+        for index, waypoint in enumerate(waypoints):
+            if not self._waypoint_has_coordinates(waypoint):
+                continue
+            distance = self._waypoint_distance(player_position, waypoint)
+            if best_distance is None or distance < best_distance:
+                best_distance = distance
+                best_index = index
+        return best_index
+
+    @staticmethod
+    def _waypoint_distance(player_position: tuple[int, int, int], waypoint: HuntWaypoint) -> int:
+        waypoint_x = waypoint.target_x or 0
+        waypoint_y = waypoint.target_y or 0
+        waypoint_z = waypoint.target_z if waypoint.target_z is not None else player_position[2]
+        return (
+            abs(player_position[0] - waypoint_x)
+            + abs(player_position[1] - waypoint_y)
+            + (abs(player_position[2] - waypoint_z) * 10)
         )
 
     def _advance_waypoint(self, *, loop_route: bool, total_waypoints: int) -> None:
