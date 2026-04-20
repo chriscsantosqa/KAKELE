@@ -192,32 +192,34 @@ class HuntRuntime:
         loop_route: bool,
         now: float,
     ) -> HuntCycleAction | None:
-        target_z = waypoint.target_z if waypoint.target_z is not None else player_position[2]
-        if target_z != player_position[2]:
-            return HuntCycleAction(
-                action=None,
-                status="z-mismatch",
-                waypoint_index=current_waypoint_index,
-                total_waypoints=total_waypoints,
-                relative_x=self._relative_x,
-                relative_y=self._relative_y,
-                completed_loops=self._completed_loops,
-                current_section=waypoint.section,
-            )
-
         delta_x = (waypoint.target_x or 0) - player_position[0]
         delta_y = (waypoint.target_y or 0) - player_position[1]
         tolerance = max(coordinate_tolerance, max(0, waypoint.waypoint_range - 1))
 
         if abs(delta_x) <= tolerance and abs(delta_y) <= tolerance:
-            if waypoint.waypoint_type in {"stand", "action"}:
+            if waypoint.waypoint_type in {"stand", "action", "use", "floor-change"}:
                 return self._handle_operational_waypoint(
                     waypoint=waypoint,
                     current_waypoint_index=current_waypoint_index,
                     total_waypoints=total_waypoints,
                     loop_route=loop_route,
                     now=now,
+                    player_position=player_position,
                 )
+
+            target_z = waypoint.target_z if waypoint.target_z is not None else player_position[2]
+            if target_z != player_position[2]:
+                return HuntCycleAction(
+                    action=None,
+                    status="z-mismatch",
+                    waypoint_index=current_waypoint_index,
+                    total_waypoints=total_waypoints,
+                    relative_x=self._relative_x,
+                    relative_y=self._relative_y,
+                    completed_loops=self._completed_loops,
+                    current_section=waypoint.section,
+                )
+
             self._advance_waypoint(loop_route=loop_route, total_waypoints=total_waypoints)
             return HuntCycleAction(
                 action=None,
@@ -274,6 +276,7 @@ class HuntRuntime:
         total_waypoints: int,
         loop_route: bool,
         now: float,
+        player_position: tuple[int, int, int],
     ) -> HuntCycleAction:
         if waypoint.waypoint_type == "stand":
             if self._waypoint_hold_until is None:
@@ -300,11 +303,12 @@ class HuntRuntime:
                 current_section=waypoint.section,
             )
 
-        if waypoint.waypoint_type == "action":
+        if waypoint.waypoint_type in {"action", "use"}:
+            status_prefix = waypoint.waypoint_type
             if not waypoint.action_key.strip():
                 self._advance_waypoint(loop_route=loop_route, total_waypoints=total_waypoints)
                 return self._build_status_cycle(
-                    status="action-missing-key",
+                    status=f"{status_prefix}-missing-key",
                     current_waypoint_index=current_waypoint_index,
                     total_waypoints=total_waypoints,
                     current_section=waypoint.section,
@@ -316,10 +320,10 @@ class HuntRuntime:
                 return HuntCycleAction(
                     action=KeyAction(
                         key=waypoint.action_key,
-                        reason=f"hunt-action-{current_waypoint_index}-{waypoint.label or 'action'}",
+                        reason=f"hunt-{status_prefix}-{current_waypoint_index}-{waypoint.label or status_prefix}",
                         hold_seconds=self._MOVEMENT_HOLD_SECONDS,
                     ),
-                    status="action-executed",
+                    status=f"{status_prefix}-executed",
                     waypoint_index=current_waypoint_index,
                     total_waypoints=total_waypoints,
                     relative_x=self._relative_x,
@@ -329,7 +333,7 @@ class HuntRuntime:
                 )
             if self._waypoint_hold_until is not None and now < self._waypoint_hold_until:
                 return self._build_status_cycle(
-                    status="action-wait",
+                    status=f"{status_prefix}-wait",
                     current_waypoint_index=current_waypoint_index,
                     total_waypoints=total_waypoints,
                     current_section=waypoint.section,
@@ -337,7 +341,32 @@ class HuntRuntime:
             self._clear_waypoint_operation_state()
             self._advance_waypoint(loop_route=loop_route, total_waypoints=total_waypoints)
             return self._build_status_cycle(
-                status="action-complete",
+                status=f"{status_prefix}-complete",
+                current_waypoint_index=current_waypoint_index,
+                total_waypoints=total_waypoints,
+                current_section=waypoint.section,
+            )
+
+        if waypoint.waypoint_type == "floor-change":
+            target_z = waypoint.target_z if waypoint.target_z is not None else player_position[2]
+            if player_position[2] == target_z:
+                self._clear_waypoint_operation_state()
+                self._advance_waypoint(loop_route=loop_route, total_waypoints=total_waypoints)
+                return self._build_status_cycle(
+                    status="floor-change-complete",
+                    current_waypoint_index=current_waypoint_index,
+                    total_waypoints=total_waypoints,
+                    current_section=waypoint.section,
+                )
+
+            if self._waypoint_hold_until is None and waypoint.wait_time_ms > 0:
+                self._waypoint_hold_until = now + (waypoint.wait_time_ms / 1000.0)
+
+            if self._waypoint_hold_until is not None and now >= self._waypoint_hold_until:
+                self._waypoint_hold_until = now + (max(250, waypoint.wait_time_ms) / 1000.0)
+
+            return self._build_status_cycle(
+                status="floor-change-wait",
                 current_waypoint_index=current_waypoint_index,
                 total_waypoints=total_waypoints,
                 current_section=waypoint.section,
