@@ -1,6 +1,9 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
 import logging
+
+from kakelebot.core.memory_validator import MemorySnapshotValidator
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +32,24 @@ class MemoryReadResult:
 
 
 class MemoryService:
-    def __init__(self, adapter: any):
+    def __init__(self, adapter: any, validator: MemorySnapshotValidator | None = None):
         self._adapter = adapter
+        self._validator = validator or MemorySnapshotValidator()
 
     def try_get_player_state(self) -> MemoryReadResult:
         try:
             data = self._adapter.read_all_offsets()
+            validation = self._validator.validate(data)
+            if not validation.is_valid:
+                error_message = "; ".join(validation.reasons)
+                logger.warning("memory read rejected by validator: %s", error_message)
+                return MemoryReadResult(
+                    available=False,
+                    state=None,
+                    source=self._adapter.__class__.__name__,
+                    error=error_message,
+                )
+
             state = PlayerState(
                 hp=max(0, int(data.get("hp", 0))),
                 max_hp=max(1, int(data.get("max_hp", 100))),
