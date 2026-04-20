@@ -14,6 +14,7 @@ from kakelebot.core.vision import BarReading, VisionService
 from kakelebot.core.window import WindowInfo
 from kakelebot.features.healing import HealingDecision, HealingService
 from kakelebot.features.hunt_runtime import HuntCycleAction, HuntRuntime
+from kakelebot.features.targeting import TargetPolicyService
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +50,7 @@ class HealingRuntime:
         input_service: InputService,
         memory_service: MemoryService | None = None,
         game_state_service: GameStateService | None = None,
+        target_policy_service: TargetPolicyService | None = None,
     ) -> None:
         self._capture = capture_service
         self._vision = vision_service
@@ -56,6 +58,7 @@ class HealingRuntime:
         self._input = input_service
         self._memory = memory_service
         self._game_state = game_state_service or GameStateService()
+        self._target_policy = target_policy_service or TargetPolicyService()
         self._hunt = HuntRuntime()
         self._time_provider = time.monotonic
         self._recent_target_observations: deque[tuple[bool, str]] = deque(maxlen=12)
@@ -146,19 +149,15 @@ class HealingRuntime:
         suppressed: list[str] = []
         now = self._time_provider()
 
-        has_target = game_state.target.has_target
-        target_text = game_state.target.target_text
-        target_reason = game_state.target.target_reason
-
-        self._recent_target_observations.append((has_target, target_text))
-
-        target_confirmed = self._target_confirmed(target_confirmation_cycles)
-        target_oscillating = self._target_oscillating(
-            target_stability_window,
-            max_target_text_variants,
+        target_evaluation = self._target_policy.evaluate(
+            target_state=game_state.target,
+            recent_observations=self._recent_target_observations,
+            confirmation_cycles=target_confirmation_cycles,
+            stability_window=target_stability_window,
+            max_target_text_variants=max_target_text_variants,
         )
 
-        valid_target = has_target and target_confirmed and not target_oscillating
+        valid_target = target_evaluation.valid
 
         if decision.should_heal_life:
             actions.append(KeyAction(life_hotkey, "heal-life"))
@@ -183,7 +182,7 @@ class HealingRuntime:
                 self._last_attack_at = now
                 attack_status = "executed"
             elif not valid_target:
-                attack_status = "no-target"
+                attack_status = target_evaluation.failure_reason
             else:
                 attack_status = "cooldown"
 
@@ -197,7 +196,7 @@ class HealingRuntime:
                 )
 
             if not valid_target:
-                secondary_attack_status = "no-target"
+                secondary_attack_status = target_evaluation.failure_reason
             elif not allowed_by_primary_rule:
                 secondary_attack_status = "waiting-primary"
             elif self._can_use_interval(
@@ -260,11 +259,11 @@ class HealingRuntime:
             attack_status=attack_status,
             secondary_attack_status=secondary_attack_status,
             hunt_status=hunt_status,
-            has_target=has_target,
-            target_confirmed=target_confirmed,
-            target_oscillating=target_oscillating,
-            target_reason=target_reason,
-            target_text=target_text,
+            has_target=target_evaluation.has_target,
+            target_confirmed=target_evaluation.confirmed,
+            target_oscillating=target_evaluation.oscillating,
+            target_reason=target_evaluation.target_reason,
+            target_text=target_evaluation.target_text,
             data_source=data_source,
             memory_status=memory_status,
             player_position=player_position,
@@ -277,25 +276,6 @@ class HealingRuntime:
             region.left - window.left + region.width,
             region.top - window.top + region.height,
         ))
-
-    def _target_confirmed(self, cycles: int) -> bool:
-        if len(self._recent_target_observations) < cycles:
-            return False
-        return all(x[0] for x in list(self._recent_target_observations)[-cycles:])
-
-    def _target_oscillating(self, window: int, max_variants: int) -> bool:
-        if len(self._recent_target_observations) < window:
-            return False
-
-        recent = list(self._recent_target_observations)[-window:]
-        flips = sum(
-            1 for i in range(1, len(recent))
-            if recent[i][0] != recent[i-1][0]
-        )
-
-        texts = {t for h, t in recent if h}
-
-        return flips >= 2 or len(texts) > max_variants
 
     def _read_memory_if_enabled(self, enabled: bool) -> MemoryReadResult | None:
         if not enabled or self._memory is None:
