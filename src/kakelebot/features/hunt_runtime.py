@@ -39,6 +39,9 @@ class HuntRuntime:
         self._waypoint_hold_until: float | None = None
         self._waypoint_action_executed = False
 
+    def current_section(self, waypoints: list[HuntWaypoint]) -> str:
+        return self._current_section(waypoints)
+
     def next_action(
         self,
         *,
