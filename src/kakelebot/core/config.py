@@ -98,16 +98,25 @@ class HuntSettings:
 
 
 @dataclass(slots=True)
+class MemoryAddressFieldSettings:
+    absolute_address: str = ""
+    module: str = ""
+    base_offset: str = ""
+    pointer_offsets: list[str] = field(default_factory=list)
+    value_type: str = "int32"
+
+
+@dataclass(slots=True)
 class MemoryAddressSettings:
-    hp: str = ""
-    max_hp: str = ""
-    mp: str = ""
-    max_mp: str = ""
-    x: str = ""
-    y: str = ""
-    z: str = ""
-    has_target: str = ""
-    target_id: str = ""
+    hp: MemoryAddressFieldSettings = field(default_factory=MemoryAddressFieldSettings)
+    max_hp: MemoryAddressFieldSettings = field(default_factory=MemoryAddressFieldSettings)
+    mp: MemoryAddressFieldSettings = field(default_factory=MemoryAddressFieldSettings)
+    max_mp: MemoryAddressFieldSettings = field(default_factory=MemoryAddressFieldSettings)
+    x: MemoryAddressFieldSettings = field(default_factory=MemoryAddressFieldSettings)
+    y: MemoryAddressFieldSettings = field(default_factory=MemoryAddressFieldSettings)
+    z: MemoryAddressFieldSettings = field(default_factory=MemoryAddressFieldSettings)
+    has_target: MemoryAddressFieldSettings = field(default_factory=MemoryAddressFieldSettings)
+    target_id: MemoryAddressFieldSettings = field(default_factory=MemoryAddressFieldSettings)
 
 
 @dataclass(slots=True)
@@ -222,6 +231,18 @@ def _coerce_str(value, fallback: str) -> str:
         return fallback
     normalized = value.strip()
     return normalized or fallback
+
+
+def _coerce_str_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for item in value:
+        if isinstance(item, str):
+            normalized = item.strip()
+            if normalized:
+                result.append(normalized)
+    return result
 
 
 def _load_normalized_region(raw: dict, fallback: NormalizedRegionSettings) -> NormalizedRegionSettings:
@@ -372,18 +393,32 @@ def _load_hunt(raw: dict) -> HuntSettings:
     )
 
 
+def _load_memory_address_field(raw: object) -> MemoryAddressFieldSettings:
+    defaults = MemoryAddressFieldSettings()
+    if isinstance(raw, str):
+        return MemoryAddressFieldSettings(absolute_address=_coerce_str(raw, defaults.absolute_address))
+    if not isinstance(raw, dict):
+        return defaults
+    return MemoryAddressFieldSettings(
+        absolute_address=_coerce_str(raw.get("absolute_address"), defaults.absolute_address),
+        module=_coerce_str(raw.get("module"), defaults.module),
+        base_offset=_coerce_str(raw.get("base_offset"), defaults.base_offset),
+        pointer_offsets=_coerce_str_list(raw.get("pointer_offsets")),
+        value_type=_coerce_str(raw.get("value_type"), defaults.value_type),
+    )
+
+
 def _load_memory_addresses(raw: dict) -> MemoryAddressSettings:
-    defaults = MemoryAddressSettings()
     return MemoryAddressSettings(
-        hp=_coerce_str(raw.get("hp"), defaults.hp),
-        max_hp=_coerce_str(raw.get("max_hp"), defaults.max_hp),
-        mp=_coerce_str(raw.get("mp"), defaults.mp),
-        max_mp=_coerce_str(raw.get("max_mp"), defaults.max_mp),
-        x=_coerce_str(raw.get("x"), defaults.x),
-        y=_coerce_str(raw.get("y"), defaults.y),
-        z=_coerce_str(raw.get("z"), defaults.z),
-        has_target=_coerce_str(raw.get("has_target"), defaults.has_target),
-        target_id=_coerce_str(raw.get("target_id"), defaults.target_id),
+        hp=_load_memory_address_field(raw.get("hp")),
+        max_hp=_load_memory_address_field(raw.get("max_hp")),
+        mp=_load_memory_address_field(raw.get("mp")),
+        max_mp=_load_memory_address_field(raw.get("max_mp")),
+        x=_load_memory_address_field(raw.get("x")),
+        y=_load_memory_address_field(raw.get("y")),
+        z=_load_memory_address_field(raw.get("z")),
+        has_target=_load_memory_address_field(raw.get("has_target")),
+        target_id=_load_memory_address_field(raw.get("target_id")),
     )
 
 
