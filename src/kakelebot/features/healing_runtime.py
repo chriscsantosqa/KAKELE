@@ -14,6 +14,7 @@ from kakelebot.core.vision import BarReading, VisionService
 from kakelebot.core.window import WindowInfo
 from kakelebot.features.healing import HealingDecision, HealingService
 from kakelebot.features.hunt_runtime import HuntCycleAction, HuntRuntime
+from kakelebot.features.section_policy import SectionPolicyService
 from kakelebot.features.skill_policy import SecondarySkillPolicyService
 from kakelebot.features.special_areas import SpecialAreaService
 from kakelebot.features.targeting import TargetPolicyService
@@ -56,6 +57,7 @@ class HealingRuntime:
         target_policy_service: TargetPolicyService | None = None,
         secondary_skill_policy_service: SecondarySkillPolicyService | None = None,
         special_area_service: SpecialAreaService | None = None,
+        section_policy_service: SectionPolicyService | None = None,
     ) -> None:
         self._capture = capture_service
         self._vision = vision_service
@@ -66,6 +68,7 @@ class HealingRuntime:
         self._target_policy = target_policy_service or TargetPolicyService()
         self._secondary_skill_policy = secondary_skill_policy_service or SecondarySkillPolicyService()
         self._special_area_service = special_area_service or SpecialAreaService()
+        self._section_policy = section_policy_service or SectionPolicyService()
         self._hunt = HuntRuntime()
         self._time_provider = time.monotonic
         self._recent_target_observations: deque[tuple[bool, str]] = deque(maxlen=12)
@@ -154,6 +157,11 @@ class HealingRuntime:
         mana = game_state.vitals.mana
         memory_status = game_state.vitals.memory_status
         data_source = game_state.navigation.data_source
+        player_position = game_state.navigation.player_position
+
+        current_section = self._hunt.current_section(hunt_waypoints) if hunt_enabled else "idle"
+        section_policy = self._section_policy.resolve(current_section)
+        current_section = section_policy.section
 
         decision = self._healing.evaluate(
             life=life,
@@ -196,7 +204,7 @@ class HealingRuntime:
                 haste_status = "cooldown"
 
         attack_status = "disabled"
-        if attack_enabled:
+        if attack_enabled and section_policy.allow_primary_attack:
             if valid_target and self._can_use_interval(self._last_attack_at, now, attack_cooldown_seconds):
                 actions.append(KeyAction(attack_hotkey, "attack-primary"))
                 self._last_attack_at = now
@@ -205,9 +213,11 @@ class HealingRuntime:
                 attack_status = target_evaluation.failure_reason
             else:
                 attack_status = "cooldown"
+        elif attack_enabled:
+            attack_status = f"section-blocked:{current_section}"
 
         secondary_attack_status = "disabled"
-        if secondary_attack_enabled:
+        if secondary_attack_enabled and section_policy.allow_secondary_attack:
             secondary_skill_evaluation = self._secondary_skill_policy.evaluate(
                 target_evaluation=target_evaluation,
                 allowed_target_texts=secondary_attack_allowed_target_texts,
@@ -236,10 +246,10 @@ class HealingRuntime:
                 secondary_attack_status = "executed"
             else:
                 secondary_attack_status = "cooldown"
+        elif secondary_attack_enabled:
+            secondary_attack_status = f"section-blocked:{current_section}"
 
         hunt_status = "disabled"
-        current_section = "idle"
-        player_position = game_state.navigation.player_position
         active_special_area = self._special_area_service.match(
             player_position=player_position,
             special_areas=hunt_special_areas,
@@ -247,7 +257,7 @@ class HealingRuntime:
         self._update_special_area_hold(active_special_area=active_special_area, now=now)
 
         if hunt_enabled:
-            if valid_target:
+            if valid_target and section_policy.pause_hunt_during_target:
                 suppressed.append("hunt-paused-during-target")
                 hunt_status = "paused-during-target"
             elif self._special_area_is_holding(now):
