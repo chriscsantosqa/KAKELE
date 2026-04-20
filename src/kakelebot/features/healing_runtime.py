@@ -183,31 +183,6 @@ class HealingRuntime:
                 target_reason="critical-life-priority",
                 target_text=target_text,
             )
-            suppressed_actions.append("combat-deprioritized-due-critical-life")
-            if haste_enabled:
-                haste_status = "deprioritized-due-critical-life"
-            if attack_enabled:
-                attack_status = "deprioritized-due-critical-life"
-            if secondary_attack_enabled:
-                secondary_attack_status = "deprioritized-due-critical-life"
-            if immediate_actions:
-                self._input.execute_many(immediate_actions, self._MULTI_ACTION_DELAY_SECONDS)
-                executed_actions.extend(immediate_actions)
-            return HealingCycleResult(
-                life_reading=life_reading,
-                mana_reading=mana_reading,
-                decision=decision,
-                actions_executed=tuple(executed_actions),
-                suppressed_actions=tuple(suppressed_actions),
-                haste_status=haste_status,
-                attack_status=attack_status,
-                secondary_attack_status=secondary_attack_status,
-                has_target=has_target,
-                target_confirmed=target_confirmed,
-                target_oscillating=target_oscillating,
-                target_reason="critical-life-priority",
-                target_text=target_text,
-            )
 
         if attack_enabled:
             attack_status = self._queue_attack(
@@ -243,8 +218,7 @@ class HealingRuntime:
             )
          
         if hunt_enabled:
-            hunt_cycle_action = self._hunt.next_action(
-                enabled=True,
+            hunt_status = self._queue_hunt(
                 loop_route=hunt_loop_route,
                 waypoint_interval_seconds=hunt_waypoint_interval_seconds,
                 move_up_hotkey=hunt_move_up_hotkey,
@@ -252,19 +226,13 @@ class HealingRuntime:
                 move_left_hotkey=hunt_move_left_hotkey,
                 move_right_hotkey=hunt_move_right_hotkey,
                 waypoints=hunt_waypoints,
+                has_target=has_target,
+                queued_actions=immediate_actions,
                 now=now,
+                suppressed_actions=suppressed_actions,
             )
-            if has_target:
-                suppressed_actions.append("hunt-paused-during-target")
-                hunt_status = "paused-during-target"
-            elif hunt_cycle_action.action is not None:
-                immediate_actions.append(hunt_cycle_action.action)
-                hunt_status = hunt_cycle_action.status
-            else:
-                suppressed_actions.append(f"hunt-{hunt_cycle_action.status}")
-                hunt_status = hunt_cycle_action.status
         else:
-            hunt_status = "disabled"   
+            hunt_status = "disabled" 
 
         if immediate_actions:
             self._input.execute_many(immediate_actions, self._MULTI_ACTION_DELAY_SECONDS)
@@ -483,7 +451,7 @@ class HealingRuntime:
             suppressed_actions.append(f"hunt-{hunt_cycle_action.status}")
 
         return hunt_cycle_action.status
-
+    
     def _can_execute_life(self, cooldown_seconds: float) -> bool:
         if self._last_life_action_at is None:
             return True

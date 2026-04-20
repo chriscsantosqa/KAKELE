@@ -49,6 +49,7 @@ class ProfileConfigPanel:
         hunt_move_left_hotkey_var: tk.StringVar,
         hunt_move_right_hotkey_var: tk.StringVar,
         hunt_route_preview_var: tk.StringVar,
+        hunt_recording_status_var: tk.StringVar,
         on_add_hunt_up: Callable[[], None],
         on_add_hunt_down: Callable[[], None],
         on_add_hunt_left: Callable[[], None],

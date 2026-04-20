@@ -168,8 +168,7 @@ class HuntRecorder:
 
     @staticmethod
     def _normalize_configured_hotkey(raw: str) -> str:
-        normalized = raw.strip().upper()
-        return normalized
+        return raw.strip().upper()
 
     def _normalize_pressed_key(self, key) -> str:
         if keyboard is None:
