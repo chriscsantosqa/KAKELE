@@ -35,6 +35,8 @@ class HuntRuntime:
         self._relative_x = 0
         self._relative_y = 0
         self._completed_loops = 0
+        self._waypoint_hold_until: float | None = None
+        self._waypoint_action_executed = False
 
     def next_action(
         self,
@@ -69,6 +71,11 @@ class HuntRuntime:
                 waypoint.target_x,
                 waypoint.target_y,
                 waypoint.target_z,
+                waypoint.waypoint_type,
+                waypoint.label,
+                waypoint.waypoint_range,
+                waypoint.wait_time_ms,
+                waypoint.action_key,
             )
             for waypoint in waypoints
         )
@@ -146,13 +153,7 @@ class HuntRuntime:
         self._last_waypoint_at = now
         self._waypoint_repeat_progress += 1
         if self._waypoint_repeat_progress >= max(1, waypoint.repeats):
-            self._waypoint_index += 1
-            self._waypoint_repeat_progress = 0
-            if loop_route and self._waypoint_index >= total_waypoints:
-                self._waypoint_index = 0
-                self._relative_x = 0
-                self._relative_y = 0
-                self._completed_loops += 1
+            self._advance_waypoint(loop_route=loop_route, total_waypoints=total_waypoints)
 
         return HuntCycleAction(
             action=action,
@@ -193,10 +194,18 @@ class HuntRuntime:
 
         delta_x = (waypoint.target_x or 0) - player_position[0]
         delta_y = (waypoint.target_y or 0) - player_position[1]
-        tolerance = max(0, coordinate_tolerance)
+        tolerance = max(coordinate_tolerance, max(0, waypoint.waypoint_range - 1))
 
         if abs(delta_x) <= tolerance and abs(delta_y) <= tolerance:
-            self._advance_waypoint_after_coordinate_match(loop_route=loop_route, total_waypoints=total_waypoints)
+            if waypoint.waypoint_type in {"stand", "action"}:
+                return self._handle_operational_waypoint(
+                    waypoint=waypoint,
+                    current_waypoint_index=current_waypoint_index,
+                    total_waypoints=total_waypoints,
+                    loop_route=loop_route,
+                    now=now,
+                )
+            self._advance_waypoint(loop_route=loop_route, total_waypoints=total_waypoints)
             return HuntCycleAction(
                 action=None,
                 status="waypoint-reached",
@@ -241,14 +250,112 @@ class HuntRuntime:
             completed_loops=self._completed_loops,
         )
 
-    def _advance_waypoint_after_coordinate_match(self, *, loop_route: bool, total_waypoints: int) -> None:
+    def _handle_operational_waypoint(
+        self,
+        *,
+        waypoint: HuntWaypoint,
+        current_waypoint_index: int,
+        total_waypoints: int,
+        loop_route: bool,
+        now: float,
+    ) -> HuntCycleAction:
+        if waypoint.waypoint_type == "stand":
+            if self._waypoint_hold_until is None:
+                self._waypoint_hold_until = now + (max(0, waypoint.wait_time_ms) / 1000.0)
+                return self._build_status_cycle(
+                    status="stand-wait",
+                    current_waypoint_index=current_waypoint_index,
+                    total_waypoints=total_waypoints,
+                )
+            if now < self._waypoint_hold_until:
+                return self._build_status_cycle(
+                    status="stand-wait",
+                    current_waypoint_index=current_waypoint_index,
+                    total_waypoints=total_waypoints,
+                )
+            self._clear_waypoint_operation_state()
+            self._advance_waypoint(loop_route=loop_route, total_waypoints=total_waypoints)
+            return self._build_status_cycle(
+                status="stand-complete",
+                current_waypoint_index=current_waypoint_index,
+                total_waypoints=total_waypoints,
+            )
+
+        if waypoint.waypoint_type == "action":
+            if not waypoint.action_key.strip():
+                self._advance_waypoint(loop_route=loop_route, total_waypoints=total_waypoints)
+                return self._build_status_cycle(
+                    status="action-missing-key",
+                    current_waypoint_index=current_waypoint_index,
+                    total_waypoints=total_waypoints,
+                )
+            if not self._waypoint_action_executed:
+                self._waypoint_action_executed = True
+                self._waypoint_hold_until = now + (max(0, waypoint.wait_time_ms) / 1000.0)
+                self._last_waypoint_at = now
+                return HuntCycleAction(
+                    action=KeyAction(
+                        key=waypoint.action_key,
+                        reason=f"hunt-action-{current_waypoint_index}-{waypoint.label or 'action'}",
+                        hold_seconds=self._MOVEMENT_HOLD_SECONDS,
+                    ),
+                    status="action-executed",
+                    waypoint_index=current_waypoint_index,
+                    total_waypoints=total_waypoints,
+                    relative_x=self._relative_x,
+                    relative_y=self._relative_y,
+                    completed_loops=self._completed_loops,
+                )
+            if self._waypoint_hold_until is not None and now < self._waypoint_hold_until:
+                return self._build_status_cycle(
+                    status="action-wait",
+                    current_waypoint_index=current_waypoint_index,
+                    total_waypoints=total_waypoints,
+                )
+            self._clear_waypoint_operation_state()
+            self._advance_waypoint(loop_route=loop_route, total_waypoints=total_waypoints)
+            return self._build_status_cycle(
+                status="action-complete",
+                current_waypoint_index=current_waypoint_index,
+                total_waypoints=total_waypoints,
+            )
+
+        return self._build_status_cycle(
+            status="unsupported-waypoint-type",
+            current_waypoint_index=current_waypoint_index,
+            total_waypoints=total_waypoints,
+        )
+
+    def _advance_waypoint(self, *, loop_route: bool, total_waypoints: int) -> None:
         self._waypoint_index += 1
         self._waypoint_repeat_progress = 0
+        self._clear_waypoint_operation_state()
         if loop_route and self._waypoint_index >= total_waypoints:
             self._waypoint_index = 0
             self._relative_x = 0
             self._relative_y = 0
             self._completed_loops += 1
+
+    def _build_status_cycle(
+        self,
+        *,
+        status: str,
+        current_waypoint_index: int,
+        total_waypoints: int,
+    ) -> HuntCycleAction:
+        return HuntCycleAction(
+            action=None,
+            status=status,
+            waypoint_index=current_waypoint_index,
+            total_waypoints=total_waypoints,
+            relative_x=self._relative_x,
+            relative_y=self._relative_y,
+            completed_loops=self._completed_loops,
+        )
+
+    def _clear_waypoint_operation_state(self) -> None:
+        self._waypoint_hold_until = None
+        self._waypoint_action_executed = False
 
     def snapshot(self, *, total_waypoints: int, status: str = "snapshot") -> HuntCycleAction:
         current_index = self._waypoint_index if total_waypoints > 0 else -1
@@ -274,6 +381,7 @@ class HuntRuntime:
         self._relative_x = 0
         self._relative_y = 0
         self._completed_loops = 0
+        self._clear_waypoint_operation_state()
 
     @staticmethod
     def _waypoint_has_coordinates(waypoint: HuntWaypoint) -> bool:
