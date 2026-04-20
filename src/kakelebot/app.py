@@ -5,6 +5,7 @@ import logging
 from kakelebot.core.calibration import CalibrationService
 from kakelebot.core.capture import CaptureService
 from kakelebot.core.input import InputService
+from kakelebot.core.memory_factory import build_memory_service
 from kakelebot.core.runtime import RuntimeBootstrap
 from kakelebot.core.session import SessionController
 from kakelebot.core.vision import VisionService
@@ -39,12 +40,14 @@ def run() -> int:
     healing_service = HealingService()
     vision_service = VisionService(PyTesseractAdapter())
     input_service = InputService(PyDirectInputAdapter())
+    memory_service = build_memory_service(runtime.profile.memory)
 
     healing_runtime = HealingRuntime(
         capture_service=capture_service,
         vision_service=vision_service,
         healing_service=healing_service,
         input_service=input_service,
+        memory_service=memory_service,
     )
     healing_loop = HealingLoopRunner(
         window_service=window_service,
@@ -56,6 +59,7 @@ def run() -> int:
         capture_service=capture_service,
         calibration_service=calibration_service,
         healing_loop=healing_loop,
+        vision_service=vision_service,
     )
 
     profile_path = runtime.paths.profiles / f"{runtime.profile.name}.json"

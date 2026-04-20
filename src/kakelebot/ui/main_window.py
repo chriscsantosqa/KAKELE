@@ -558,7 +558,11 @@ class MainWindow:
         self._diag_target_oscillating_var.set(f"target oscillating: {last_cycle.target_oscillating}")
         self._diag_target_reason_var.set(
             "target reason: "
-            + (f"{last_cycle.target_reason} | text='{last_cycle.target_text or 'empty'}'")
+            + (
+                f"{last_cycle.target_reason} | text='{last_cycle.target_text or 'empty'}' "
+                f"| source={last_cycle.data_source} | memory={last_cycle.memory_status} "
+                f"| pos={last_cycle.player_position}"
+            )
         )
         self._diag_terminated_var.set(
             "terminated early: "
