@@ -78,15 +78,7 @@ class HuntRuntime:
         self._reset_if_route_changed(route_signature)
 
         if self._last_waypoint_at is not None and (now - self._last_waypoint_at) < waypoint_interval_seconds:
-            return HuntCycleAction(
-                action=None,
-                status="cooldown",
-                waypoint_index=self._waypoint_index,
-                total_waypoints=total_waypoints,
-                relative_x=self._relative_x,
-                relative_y=self._relative_y,
-                completed_loops=self._completed_loops,
-            )
+            return self.snapshot(total_waypoints=total_waypoints, status="cooldown")
 
         if self._waypoint_index >= total_waypoints:
             if not loop_route:
@@ -148,6 +140,20 @@ class HuntRuntime:
             action=action,
             status="executed",
             waypoint_index=current_waypoint_index,
+            total_waypoints=total_waypoints,
+            relative_x=self._relative_x,
+            relative_y=self._relative_y,
+            completed_loops=self._completed_loops,
+        )
+
+    def snapshot(self, *, total_waypoints: int, status: str = "snapshot") -> HuntCycleAction:
+        current_index = self._waypoint_index if total_waypoints > 0 else -1
+        if total_waypoints > 0 and current_index >= total_waypoints:
+            current_index = total_waypoints - 1
+        return HuntCycleAction(
+            action=None,
+            status=status,
+            waypoint_index=current_index,
             total_waypoints=total_waypoints,
             relative_x=self._relative_x,
             relative_y=self._relative_y,
