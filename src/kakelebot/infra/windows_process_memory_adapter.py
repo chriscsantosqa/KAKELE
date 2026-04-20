@@ -35,6 +35,8 @@ class MemoryAddressMap:
     z: MemoryFieldAddress
     has_target: MemoryFieldAddress
     target_id: MemoryFieldAddress
+    level: MemoryFieldAddress
+    exp: MemoryFieldAddress
 
 
 class WindowsProcessMemoryAdapter:
@@ -70,6 +72,8 @@ class WindowsProcessMemoryAdapter:
                 "z": self._read_field_value(handle, module_bases, self._addresses.z),
                 "has_target": self._read_field_value(handle, module_bases, self._addresses.has_target),
                 "target_id": self._read_field_value(handle, module_bases, self._addresses.target_id),
+                "level": self._read_field_value(handle, module_bases, self._addresses.level),
+                "exp": self._read_field_value(handle, module_bases, self._addresses.exp),
             }
         finally:
             ctypes.windll.kernel32.CloseHandle(handle)  # type: ignore[attr-defined]
@@ -300,4 +304,6 @@ def build_address_map(raw: object) -> MemoryAddressMap:
         z=build_field_address(getattr(raw, "z", None)),
         has_target=build_field_address(getattr(raw, "has_target", None)),
         target_id=build_field_address(getattr(raw, "target_id", None)),
+        level=build_field_address(getattr(raw, "level", None)),
+        exp=build_field_address(getattr(raw, "exp", None)),
     )
