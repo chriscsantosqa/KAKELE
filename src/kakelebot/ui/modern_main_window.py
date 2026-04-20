@@ -40,6 +40,7 @@ class ModernMainWindow(MainWindow):
         self._cavebot_waypoint_var = tk.StringVar(value="cavebot waypoint: -")
         self._cavebot_position_var = tk.StringVar(value="cavebot position: -")
         self._cavebot_loops_var = tk.StringVar(value="cavebot loops: -")
+        self._last_logged_hunt_status = ""
 
     def _configure_theme(self) -> None:
         style = ttk.Style(self.root)
@@ -394,6 +395,14 @@ class ModernMainWindow(MainWindow):
         self._cavebot_waypoint_var.set(f"cavebot waypoint: {waypoint}")
         self._cavebot_position_var.set(f"cavebot position: {position}")
         self._cavebot_loops_var.set(f"cavebot loops: {loops}")
+        self._log_hunt_transition(live_cycle.hunt_status)
+
+    def _log_hunt_transition(self, hunt_status: str) -> None:
+        normalized = (hunt_status or "").strip()
+        if not normalized or normalized == self._last_logged_hunt_status:
+            return
+        self._last_logged_hunt_status = normalized
+        self._append_output(f"Cavebot status transition: {normalized}\n")
 
     @staticmethod
     def _parse_hunt_status(raw: str) -> tuple[str, str, str, str]:
