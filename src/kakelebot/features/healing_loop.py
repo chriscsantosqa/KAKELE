@@ -136,6 +136,8 @@ class HealingLoopRunner:
                 hunt_move_down_hotkey=profile.hunt.move_down_hotkey,
                 hunt_move_left_hotkey=profile.hunt.move_left_hotkey,
                 hunt_move_right_hotkey=profile.hunt.move_right_hotkey,
+                hunt_use_coordinate_navigation=profile.hunt.use_coordinate_navigation,
+                hunt_coordinate_tolerance=profile.hunt.coordinate_tolerance,
                 hunt_waypoints=profile.hunt.waypoints,
                 window_is_active=window.is_active,
                 memory_enabled=profile.memory.enabled,
