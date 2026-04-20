@@ -97,6 +97,7 @@ class HuntWaypoint:
     waypoint_range: int = 1
     wait_time_ms: int = 0
     action_key: str = ""
+    section: str = "hunt"
 
 
 @dataclass(slots=True)
@@ -467,6 +468,7 @@ def _load_hunt(raw: dict) -> HuntSettings:
                     waypoint_range=max(1, _coerce_int(item.get("waypoint_range"), 1)),
                     wait_time_ms=max(0, _coerce_int(item.get("wait_time_ms"), 0)),
                     action_key=_coerce_str(item.get("action_key"), ""),
+                    section=_coerce_str(item.get("section"), "hunt"),
                 )
             )
     return HuntSettings(
