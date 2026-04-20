@@ -156,41 +156,10 @@ class WindowsProcessMemoryAdapter:
 
     @staticmethod
     def _find_pid_by_name(process_name: str) -> int | None:
-        create_snapshot = ctypes.windll.kernel32.CreateToolhelp32Snapshot  # type: ignore[attr-defined]
-        process32_first = ctypes.windll.kernel32.Process32FirstW  # type: ignore[attr-defined]
-        process32_next = ctypes.windll.kernel32.Process32NextW  # type: ignore[attr-defined]
-        close_handle = ctypes.windll.kernel32.CloseHandle  # type: ignore[attr-defined]
-
-        class PROCESSENTRY32W(ctypes.Structure):
-            _fields_ = [
-                ("dwSize", wintypes.DWORD),
-                ("cntUsage", wintypes.DWORD),
-                ("th32ProcessID", wintypes.DWORD),
-                ("th32DefaultHeapID", ctypes.POINTER(wintypes.ULONG)),
-                ("th32ModuleID", wintypes.DWORD),
-                ("cntThreads", wintypes.DWORD),
-                ("th32ParentProcessID", wintypes.DWORD),
-                ("pcPriClassBase", ctypes.c_long),
-                ("dwFlags", wintypes.DWORD),
-                ("szExeFile", wintypes.WCHAR * MAX_PATH),
-            ]
-
-        snapshot = create_snapshot(TH32CS_SNAPPROCESS, 0)
-        if snapshot == wintypes.HANDLE(-1).value:
-            raise RuntimeError("failed to enumerate processes")
-
-        try:
-            entry = PROCESSENTRY32W()
-            entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
-            if not process32_first(snapshot, ctypes.byref(entry)):
-                return None
-            while True:
-                if entry.szExeFile.lower() == process_name:
-                    return int(entry.th32ProcessID)
-                if not process32_next(snapshot, ctypes.byref(entry)):
-                    return None
-        finally:
-            close_handle(snapshot)
+        for pid, exe_name in enumerate_running_processes():
+            if exe_name.lower() == process_name:
+                return pid
+        return None
 
     @staticmethod
     def _enumerate_module_bases(pid: int) -> dict[str, int]:
@@ -231,6 +200,49 @@ class WindowsProcessMemoryAdapter:
             return result
         finally:
             close_handle(snapshot)
+
+
+def enumerate_running_processes() -> list[tuple[int, str]]:
+    if os.name != "nt":
+        return []
+
+    create_snapshot = ctypes.windll.kernel32.CreateToolhelp32Snapshot  # type: ignore[attr-defined]
+    process32_first = ctypes.windll.kernel32.Process32FirstW  # type: ignore[attr-defined]
+    process32_next = ctypes.windll.kernel32.Process32NextW  # type: ignore[attr-defined]
+    close_handle = ctypes.windll.kernel32.CloseHandle  # type: ignore[attr-defined]
+
+    class PROCESSENTRY32W(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", wintypes.DWORD),
+            ("cntUsage", wintypes.DWORD),
+            ("th32ProcessID", wintypes.DWORD),
+            ("th32DefaultHeapID", ctypes.POINTER(wintypes.ULONG)),
+            ("th32ModuleID", wintypes.DWORD),
+            ("cntThreads", wintypes.DWORD),
+            ("th32ParentProcessID", wintypes.DWORD),
+            ("pcPriClassBase", ctypes.c_long),
+            ("dwFlags", wintypes.DWORD),
+            ("szExeFile", wintypes.WCHAR * MAX_PATH),
+        ]
+
+    snapshot = create_snapshot(TH32CS_SNAPPROCESS, 0)
+    if snapshot == wintypes.HANDLE(-1).value:
+        raise RuntimeError("failed to enumerate processes")
+
+    try:
+        entry = PROCESSENTRY32W()
+        entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+        if not process32_first(snapshot, ctypes.byref(entry)):
+            return []
+
+        processes: list[tuple[int, str]] = []
+        while True:
+            processes.append((int(entry.th32ProcessID), entry.szExeFile))
+            if not process32_next(snapshot, ctypes.byref(entry)):
+                break
+        return processes
+    finally:
+        close_handle(snapshot)
 
 
 def parse_address(value: str) -> int:
