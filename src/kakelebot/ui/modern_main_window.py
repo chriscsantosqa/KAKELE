@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import copy
+import json
 import threading
+from datetime import UTC, datetime
 import tkinter as tk
 from tkinter import ttk
 
@@ -47,6 +49,9 @@ class ModernMainWindow(MainWindow):
         self._last_logged_hunt_status = ""
         self._memory_editor_dialog: MemoryEditorDialog | None = None
         self._memory_field_tester = MemoryFieldTester()
+        self._memory_trace_enabled = False
+        self._memory_trace_path = None
+        self._last_memory_trace_signature = ""
 
     def _configure_theme(self) -> None:
         style = ttk.Style(self.root)
@@ -441,6 +446,8 @@ class ModernMainWindow(MainWindow):
             on_save_calibration_snapshot=self._on_save_calibration_snapshot,
             on_start_cavebot=self._on_start_cavebot,
             on_stop_cavebot=self._on_stop_cavebot,
+            on_start_memory_trace=self._on_start_memory_trace,
+            on_stop_memory_trace=self._on_stop_memory_trace,
         )
 
     def _on_start(self) -> None:
@@ -484,12 +491,68 @@ class ModernMainWindow(MainWindow):
         self._session_controller.stop_cavebot()
         self._append_output("Cavebot stopped during active session.\n")
 
+    def _on_start_memory_trace(self) -> None:
+        if self._memory_trace_enabled:
+            self._append_output("Memory trace is already running.\n")
+            return
+        trace_dir = self._profile_path.parent / "_memory_traces" / self._profile.name
+        trace_dir.mkdir(parents=True, exist_ok=True)
+        self._memory_trace_path = trace_dir / f"memory-trace-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}.jsonl"
+        self._memory_trace_enabled = True
+        self._last_memory_trace_signature = ""
+        self._append_output(f"Memory trace started: {self._memory_trace_path}\n")
+
+    def _on_stop_memory_trace(self) -> None:
+        if not self._memory_trace_enabled:
+            self._append_output("Memory trace is not running.\n")
+            return
+        path = self._memory_trace_path
+        self._memory_trace_enabled = False
+        self._memory_trace_path = None
+        self._last_memory_trace_signature = ""
+        self._append_output(f"Memory trace stopped: {path}\n")
+
     def _refresh_view(self) -> None:
         super()._refresh_view()
         self._apply_cavebot_overview()
+        self._capture_memory_trace_sample()
         live_cycles_completed = self._session_controller.live_cycles_completed
         if live_cycles_completed > 0 and self._worker is not None and self._worker.is_alive():
             self._cycles_var.set(f"cycles: {live_cycles_completed}")
+
+    def _capture_memory_trace_sample(self) -> None:
+        if not self._memory_trace_enabled or self._memory_trace_path is None:
+            return
+        result = self._read_memory_overview_result()
+        payload = {
+            "timestamp_utc": datetime.now(UTC).isoformat(),
+            "process_name": self._memory_process_picker_var.get().strip() or self._profile.memory.process_name,
+            "memory_enabled": bool(self._memory_enabled_var.get()),
+            "available": bool(result is not None and result.available and result.state is not None),
+            "source": None if result is None else result.source,
+            "error": None if result is None else result.error,
+            "state": None,
+        }
+        if result is not None and result.available and result.state is not None:
+            payload["state"] = {
+                "hp": result.state.hp,
+                "max_hp": result.state.max_hp,
+                "mp": result.state.mp,
+                "max_mp": result.state.max_mp,
+                "x": result.state.x,
+                "y": result.state.y,
+                "z": result.state.z,
+                "level": result.state.level,
+                "exp": result.state.exp,
+                "has_target": result.state.has_target,
+                "target_id": result.state.target_id,
+            }
+        signature = json.dumps(payload.get("state"), sort_keys=True, default=str)
+        if signature == self._last_memory_trace_signature:
+            return
+        self._last_memory_trace_signature = signature
+        with self._memory_trace_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
     def _apply_cavebot_overview(self) -> None:
         live_cycle = self._session_controller.live_cycle_result
