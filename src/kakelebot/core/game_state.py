@@ -153,18 +153,21 @@ class GameStateService:
         inherited_data_source: str,
     ) -> NavigationState:
         if (
-            memory_prefer_for_cavebot
-            and memory_result is not None
+            memory_result is not None
             and memory_result.available
             and memory_result.state is not None
         ):
+            if memory_prefer_for_cavebot:
+                data_source = "memory-cavebot" if inherited_data_source == "vision" else "memory-hybrid"
+            else:
+                data_source = "memory-position" if inherited_data_source == "vision" else f"{inherited_data_source}+memory-position"
             return NavigationState(
                 player_position=(
                     memory_result.state.x,
                     memory_result.state.y,
                     memory_result.state.z,
                 ),
-                data_source="memory-cavebot" if inherited_data_source == "vision" else "memory-hybrid",
+                data_source=data_source,
             )
 
         return NavigationState(
