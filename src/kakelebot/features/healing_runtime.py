@@ -159,6 +159,17 @@ class HealingRuntime:
         data_source = game_state.navigation.data_source
         player_position = game_state.navigation.player_position
 
+        if player_position is not None:
+            self._last_memory_position = player_position
+        elif memory_enabled and self._last_memory_position is not None:
+            player_position = self._last_memory_position
+            data_source = (
+                "memory-position-cache"
+                if data_source == "vision"
+                else f"{data_source}+memory-position-cache"
+            )
+            memory_status = f"{memory_status}|using-last-position"
+
         current_section = self._hunt.current_section(hunt_waypoints) if hunt_enabled else "idle"
         section_policy = self._section_policy.resolve(current_section)
         current_section = section_policy.section
