@@ -80,7 +80,6 @@ class HealingLoopRunner:
 
             try:
                 window = self._window_service.get_game_window()
-                window = self._window_service.activate_game_window(window)
                 window_missing_since = None
             except WindowDiscoveryError:
                 now = self._time_provider()
