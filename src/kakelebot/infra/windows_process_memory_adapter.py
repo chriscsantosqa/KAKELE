@@ -63,15 +63,15 @@ class WindowsProcessMemoryAdapter:
         try:
             module_bases = self._enumerate_module_bases(pid)
             return {
-                "hp": self._read_field_value(handle, module_bases, self._addresses.hp),
-                "max_hp": self._read_field_value(handle, module_bases, self._addresses.max_hp),
-                "mp": self._read_field_value(handle, module_bases, self._addresses.mp),
-                "max_mp": self._read_field_value(handle, module_bases, self._addresses.max_mp),
-                "x": self._read_field_value(handle, module_bases, self._addresses.x),
-                "y": self._read_field_value(handle, module_bases, self._addresses.y),
-                "z": self._read_field_value(handle, module_bases, self._addresses.z),
-                "has_target": self._read_field_value(handle, module_bases, self._addresses.has_target),
-                "target_id": self._read_field_value(handle, module_bases, self._addresses.target_id),
+                "hp": self._read_optional_field_value(handle, module_bases, self._addresses.hp, 0),
+                "max_hp": self._read_optional_field_value(handle, module_bases, self._addresses.max_hp, 100),
+                "mp": self._read_optional_field_value(handle, module_bases, self._addresses.mp, 0),
+                "max_mp": self._read_optional_field_value(handle, module_bases, self._addresses.max_mp, 100),
+                "x": self._read_optional_field_value(handle, module_bases, self._addresses.x, 0),
+                "y": self._read_optional_field_value(handle, module_bases, self._addresses.y, 0),
+                "z": self._read_optional_field_value(handle, module_bases, self._addresses.z, 0),
+                "has_target": self._read_optional_field_value(handle, module_bases, self._addresses.has_target, 0),
+                "target_id": self._read_optional_field_value(handle, module_bases, self._addresses.target_id, 0),
                 "level": self._read_optional_field_value(handle, module_bases, self._addresses.level, 1),
                 "exp": self._read_optional_field_value(handle, module_bases, self._addresses.exp, 0),
             }
@@ -324,15 +324,15 @@ def build_address_map(raw: object) -> MemoryAddressMap:
     if raw is None:
         raise ValueError("memory addresses are missing")
     return MemoryAddressMap(
-        hp=build_field_address(getattr(raw, "hp", None)),
-        max_hp=build_field_address(getattr(raw, "max_hp", None)),
-        mp=build_field_address(getattr(raw, "mp", None)),
-        max_mp=build_field_address(getattr(raw, "max_mp", None)),
-        x=build_field_address(getattr(raw, "x", None)),
-        y=build_field_address(getattr(raw, "y", None)),
-        z=build_field_address(getattr(raw, "z", None)),
-        has_target=build_field_address(getattr(raw, "has_target", None)),
-        target_id=build_field_address(getattr(raw, "target_id", None)),
+        hp=build_optional_field_address(getattr(raw, "hp", None)),
+        max_hp=build_optional_field_address(getattr(raw, "max_hp", None)),
+        mp=build_optional_field_address(getattr(raw, "mp", None)),
+        max_mp=build_optional_field_address(getattr(raw, "max_mp", None)),
+        x=build_optional_field_address(getattr(raw, "x", None)),
+        y=build_optional_field_address(getattr(raw, "y", None)),
+        z=build_optional_field_address(getattr(raw, "z", None)),
+        has_target=build_optional_field_address(getattr(raw, "has_target", None)),
+        target_id=build_optional_field_address(getattr(raw, "target_id", None)),
         level=build_optional_field_address(getattr(raw, "level", None)),
         exp=build_optional_field_address(getattr(raw, "exp", None)),
     )
