@@ -1543,6 +1543,10 @@ class MainWindow:
         profile.hunt.move_down_hotkey = self._hunt_move_down_hotkey_var.get().strip().upper()
         profile.hunt.move_left_hotkey = self._hunt_move_left_hotkey_var.get().strip().upper()
         profile.hunt.move_right_hotkey = self._hunt_move_right_hotkey_var.get().strip().upper()
+        profile.hunt.use_coordinate_navigation = any(
+            waypoint.target_x is not None and waypoint.target_y is not None
+            for waypoint in self._hunt_waypoints
+        )
         profile.hunt.waypoints = [
             HuntWaypoint(
                 direction=waypoint.direction,
@@ -1753,16 +1757,7 @@ class MainWindow:
             self._refresh_hunt_route_preview()
             return
 
-        last = self._hunt_waypoints[-1]
-        delta_x, delta_y = self._hunt_direction_delta(last.direction)
-
-        if last.repeats > 1:
-            last.repeats -= 1
-            last.relative_x -= delta_x
-            last.relative_y -= delta_y
-        else:
-            self._hunt_waypoints.pop()
-
+        self._hunt_waypoints.pop()
         self._refresh_hunt_route_preview()
 
     def _on_clear_hunt_waypoints(self) -> None:
@@ -1774,15 +1769,31 @@ class MainWindow:
             self._append_output("Hunt recording ignored: session is running.\n")
             return
 
+        memory_result = self._read_memory_overview_result()
+        if memory_result is None or not memory_result.available or memory_result.state is None:
+            self._append_output("Hunt recording start failed: enable memory reading and validate the executable/addresses first.\n")
+            self._hunt_recording_status_var.set("hunt recording: waiting for valid memory position")
+            return
+
         try:
+            origin_position = (
+                memory_result.state.x,
+                memory_result.state.y,
+                memory_result.state.z,
+            )
             self._hunt_recorder.start(
                 move_up_hotkey=self._hunt_move_up_hotkey_var.get(),
                 move_down_hotkey=self._hunt_move_down_hotkey_var.get(),
                 move_left_hotkey=self._hunt_move_left_hotkey_var.get(),
                 move_right_hotkey=self._hunt_move_right_hotkey_var.get(),
+                origin_position=origin_position,
             )
-            self._hunt_recording_status_var.set("hunt recording: recording from origin (0, 0)")
-            self._append_output("Hunt recording started. Move the character manually in the game and then click Stop recording.\n")
+            self._hunt_recording_status_var.set(
+                f"hunt recording: recording from memory origin ({origin_position[0]}, {origin_position[1]}, {origin_position[2]})"
+            )
+            self._append_output(
+                "Hunt recording started with memory positions. Move the character in the game and then click Stop recording.\n"
+            )
         except (RuntimeError, ValueError) as error:
             self._append_output(f"Hunt recording start failed: {error}\n")
 
@@ -1794,26 +1805,50 @@ class MainWindow:
                 repeats=waypoint.repeats,
                 relative_x=waypoint.relative_x,
                 relative_y=waypoint.relative_y,
+                target_x=waypoint.target_x,
+                target_y=waypoint.target_y,
+                target_z=waypoint.target_z,
+                waypoint_type=waypoint.waypoint_type,
+                label=waypoint.label,
+                waypoint_range=waypoint.waypoint_range,
+                wait_time_ms=waypoint.wait_time_ms,
+                action_key=waypoint.action_key,
+                section=waypoint.section,
             )
             for waypoint in recorded
         ]
         self._refresh_hunt_route_preview()
 
-        total_steps = sum(waypoint.repeats for waypoint in self._hunt_waypoints)
+        positional_waypoints = sum(
+            1 for waypoint in self._hunt_waypoints
+            if waypoint.target_x is not None and waypoint.target_y is not None
+        )
         if self._hunt_waypoints:
             last = self._hunt_waypoints[-1]
-            self._hunt_recording_status_var.set(f"hunt recording: stopped | steps={total_steps} | end=({last.relative_x}, {last.relative_y})")
+            self._hunt_recording_status_var.set(
+                f"hunt recording: stopped | nodes={len(self._hunt_waypoints)} | positional={positional_waypoints} | last=({last.target_x}, {last.target_y}, {last.target_z})"
+            )
         else:
             self._hunt_recording_status_var.set("hunt recording: stopped | no movement captured")
 
-        self._append_output(f"Hunt recording stopped. Captured waypoints={len(self._hunt_waypoints)} | steps={total_steps}\n")
+        self._append_output(
+            f"Hunt recording stopped. Captured waypoints={len(self._hunt_waypoints)} | positional={positional_waypoints}\n"
+        )
 
     def _refresh_hunt_recording_status(self) -> None:
+        memory_result = self._read_memory_overview_result()
+        if memory_result is not None and memory_result.available and memory_result.state is not None:
+            self._hunt_recorder.record_position(
+                (memory_result.state.x, memory_result.state.y, memory_result.state.z)
+            )
+
         snapshot = self._hunt_recorder.snapshot()
         if not snapshot.is_recording:
             return
 
-        self._hunt_recording_status_var.set(f"hunt recording: REC | steps={snapshot.total_steps} | pos=({snapshot.relative_x}, {snapshot.relative_y})")
+        self._hunt_recording_status_var.set(
+            f"hunt recording: REC | nodes={len(snapshot.waypoints)} | delta=({snapshot.relative_x}, {snapshot.relative_y}) | status={snapshot.status}"
+        )
         self._hunt_route_preview_var.set(self._format_hunt_waypoints(list(snapshot.waypoints)))
 
     def _refresh_hunt_route_preview(self) -> None:
@@ -1846,7 +1881,10 @@ class MainWindow:
             return "No waypoints configured."
         parts = []
         for index, waypoint in enumerate(waypoints):
-            target = f" target=({waypoint.target_x},{waypoint.target_y},{waypoint.target_z})" if waypoint.target_x is not None and waypoint.target_y is not None else ""
+            position_suffix = ""
+            if waypoint.target_x is not None and waypoint.target_y is not None:
+                position_suffix = f" pos=({waypoint.target_x},{waypoint.target_y},{waypoint.target_z})"
+            relative_suffix = f" rel=({waypoint.relative_x},{waypoint.relative_y})"
             extras = []
             if waypoint.label:
                 extras.append(f"label={waypoint.label}")
@@ -1855,7 +1893,9 @@ class MainWindow:
             if waypoint.waypoint_type:
                 extras.append(f"type={waypoint.waypoint_type}")
             suffix = f" [{' | '.join(extras)}]" if extras else ""
-            parts.append(f"{index + 1}:{waypoint.direction}x{waypoint.repeats}@({waypoint.relative_x},{waypoint.relative_y}){target}{suffix}")
+            parts.append(
+                f"{index + 1}:{waypoint.direction}x{waypoint.repeats}{relative_suffix}{position_suffix}{suffix}"
+            )
         return " | ".join(parts)
 
     def run(self) -> None:
