@@ -17,6 +17,8 @@ class SessionActionsPanel:
         on_save_calibration_snapshot,
         on_start_cavebot=None,
         on_stop_cavebot=None,
+        on_start_memory_trace=None,
+        on_stop_memory_trace=None,
     ):
         frame = ttk.LabelFrame(parent, text="Session", padding=12)
         frame.pack(fill="x", pady=(0, 12))
@@ -31,6 +33,10 @@ class SessionActionsPanel:
             ttk.Button(frame, text="Start cavebot", command=on_start_cavebot).pack(fill="x", pady=(0, 6))
         if on_stop_cavebot is not None:
             ttk.Button(frame, text="Stop cavebot", command=on_stop_cavebot).pack(fill="x", pady=(0, 6))
+        if on_start_memory_trace is not None:
+            ttk.Button(frame, text="Start memory trace", command=on_start_memory_trace).pack(fill="x", pady=(0, 6))
+        if on_stop_memory_trace is not None:
+            ttk.Button(frame, text="Stop memory trace", command=on_stop_memory_trace).pack(fill="x", pady=(0, 6))
 
         ttk.Button(frame, text="Refresh ROI/OCR preview", command=on_refresh_preview).pack(fill="x", pady=(0, 6))
         ttk.Button(
