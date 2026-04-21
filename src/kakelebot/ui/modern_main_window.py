@@ -478,6 +478,88 @@ class ModernMainWindow(MainWindow):
             return None
         return memory_service.try_get_player_state(required_fields=required_fields)
 
+    def _apply_memory_overview(self) -> None:
+        live_cycle = self._session_controller.live_cycle_result
+        if live_cycle is None and self._last_session_result is not None and self._last_session_result.healing_loop_result is not None:
+            live_cycle = self._last_session_result.healing_loop_result.last_cycle
+
+        if not self._memory_enabled_var.get():
+            self._memory_status_var.set("memory status: disabled in UI/profile")
+            self._memory_source_var.set("memory source: inactive")
+            self._memory_hp_var.set("hp: unavailable")
+            self._memory_mp_var.set("mp: unavailable")
+            self._memory_position_var.set("position: unavailable")
+            self._memory_target_var.set("target: unavailable")
+            self._memory_level_var.set("level/exp: unavailable")
+            return
+
+        selected_process = self._memory_process_name_var.get().replace("memory executable: ", "", 1)
+        full_result = self._read_memory_overview_result()
+        position_result = self._read_memory_position_result()
+
+        if full_result is None and position_result is None:
+            self._memory_status_var.set("memory status: unavailable")
+            self._memory_source_var.set(f"memory source: process={selected_process or 'unselected'}")
+            self._memory_hp_var.set(
+                f"hp: {self._format_reading(live_cycle.life_reading) if live_cycle is not None else 'unavailable'}"
+            )
+            self._memory_mp_var.set(
+                f"mp: {self._format_reading(live_cycle.mana_reading) if live_cycle is not None else 'unavailable'}"
+            )
+            self._memory_position_var.set(f"position: {live_cycle.player_position if live_cycle is not None else 'unavailable'}")
+            self._memory_target_var.set("target: combat disabled" if not (self._attack_enabled_var.get() or self._secondary_attack_enabled_var.get()) else "target: unavailable")
+            self._memory_level_var.set("level/exp: unavailable")
+            return
+
+        state = full_result.state if full_result is not None else None
+        position_state = position_result.state if position_result is not None else None
+        full_available = bool(full_result is not None and full_result.available and state is not None)
+        position_available = bool(position_result is not None and position_result.available and position_state is not None)
+
+        if full_available:
+            status_text = "available"
+        elif position_available:
+            status_text = "partial-position-only"
+        else:
+            status_text = (full_result.error if full_result is not None and full_result.error else None) or (
+                position_result.error if position_result is not None and position_result.error else "unavailable"
+            )
+
+        source_text = full_result.source if full_result is not None else (position_result.source if position_result is not None else "inactive")
+        self._memory_status_var.set(f"memory status: {status_text}")
+        self._memory_source_var.set(f"memory source: {source_text} | process={selected_process or 'unselected'}")
+
+        if state is not None:
+            self._memory_hp_var.set(f"hp: {state.hp}/{state.max_hp}")
+            self._memory_mp_var.set(f"mp: {state.mp}/{state.max_mp}")
+            self._memory_level_var.set(f"level/exp: {state.level} / {state.exp}")
+        else:
+            self._memory_hp_var.set(
+                f"hp: {self._format_reading(live_cycle.life_reading) if live_cycle is not None else 'unavailable'}"
+            )
+            self._memory_mp_var.set(
+                f"mp: {self._format_reading(live_cycle.mana_reading) if live_cycle is not None else 'unavailable'}"
+            )
+            self._memory_level_var.set("level/exp: unavailable")
+
+        if position_state is not None:
+            self._memory_position_var.set(f"position: ({position_state.x}, {position_state.y}, {position_state.z})")
+        elif state is not None:
+            self._memory_position_var.set(f"position: ({state.x}, {state.y}, {state.z})")
+        else:
+            self._memory_position_var.set(f"position: {live_cycle.player_position if live_cycle is not None else 'unavailable'}")
+
+        if not (self._attack_enabled_var.get() or self._secondary_attack_enabled_var.get()):
+            self._memory_target_var.set("target: combat disabled")
+        elif state is not None:
+            self._memory_target_var.set(f"target: has_target={state.has_target} | target_id={state.target_id}")
+        else:
+            self._memory_target_var.set(
+                f"target: has_target={live_cycle.has_target} | text='{live_cycle.target_text or 'empty'}'"
+                if live_cycle is not None
+                else "target: unavailable"
+            )
+
     def _on_open_memory_editor(self) -> None:
         if self._memory_editor_dialog is not None:
             self._memory_editor_dialog.focus()
@@ -895,8 +977,8 @@ class ModernMainWindow(MainWindow):
         for part in parts[1:]:
             if part.startswith("waypoint="):
                 waypoint = part.removeprefix("waypoint=").strip()
-            elif part.startswith("pos="):
-                position = part.removeprefix("pos=").strip()
+            elif part.startswith("player="):
+                position = part.removeprefix("player=").strip()
             elif part.startswith("loops="):
                 loops = part.removeprefix("loops=").strip()
 
