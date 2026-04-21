@@ -9,7 +9,7 @@ from tkinter import ttk
 
 from kakelebot.core.config import HuntWaypoint, MemoryAddressSettings, save_profile
 from kakelebot.core.memory import MemoryReadResult
-from kakelebot.core.memory_factory import build_memory_service
+from kakelebot.core.memory_factory import build_memory_service, list_running_process_names
 from kakelebot.core.memory_field_tester import MemoryFieldTester, MemoryFieldTestResult
 from kakelebot.ui.main_window import MainWindow
 from kakelebot.ui.memory_editor_dialog import MemoryEditorDialog
@@ -17,8 +17,6 @@ from kakelebot.ui.profile_config_panel import ProfileConfigPanel
 from kakelebot.ui.scrollable_frame import ScrollableFrame
 from kakelebot.ui.session_actions_panel import SessionActionsPanel
 from kakelebot.ui.waypoint_editor_dialog import WaypointEditorDialog
-from kakelebot.core.memory import MemoryReadResult
-from kakelebot.core.memory_factory import build_memory_service, list_running_process_names
 
 
 class ModernMainWindow(MainWindow):
@@ -31,6 +29,19 @@ class ModernMainWindow(MainWindow):
     _ACCENT = "#6ea8fe"
     _ACCENT_ACTIVE = "#8bb8ff"
     _SUCCESS = "#55d6a8"
+    _TRACE_FIELDS = (
+        "hp",
+        "max_hp",
+        "mp",
+        "max_mp",
+        "x",
+        "y",
+        "z",
+        "has_target",
+        "target_id",
+        "level",
+        "exp",
+    )
 
     def _build_layout(self) -> None:
         self._ensure_cavebot_overview_vars()
@@ -455,7 +466,6 @@ class ModernMainWindow(MainWindow):
             return None
         return memory_service.try_get_player_state(required_fields=required_fields)
 
-
     def _read_memory_position_result(self) -> MemoryReadResult | None:
         try:
             memory_profile = self._build_memory_profile_from_form()
@@ -467,7 +477,7 @@ class ModernMainWindow(MainWindow):
         if memory_service is None:
             return None
         return memory_service.try_get_player_state(required_fields=required_fields)
-    
+
     def _on_open_memory_editor(self) -> None:
         if self._memory_editor_dialog is not None:
             self._memory_editor_dialog.focus()
@@ -582,7 +592,7 @@ class ModernMainWindow(MainWindow):
             f"hunt recording: recording from memory origin ({origin_position[0]}, {origin_position[1]}, {origin_position[2]})"
         )
         self._append_output("Hunt recording started with memory positions.\n")
-    
+
     def _refresh_hunt_recording_status(self) -> None:
         position_result = self._read_memory_position_result()
         if position_result is not None and position_result.available and position_result.state is not None:
@@ -598,7 +608,7 @@ class ModernMainWindow(MainWindow):
             f"hunt recording: REC | nodes={len(snapshot.waypoints)} | delta=({snapshot.relative_x}, {snapshot.relative_y}) | status={snapshot.status}"
         )
         self._hunt_route_preview_var.set(self._format_hunt_waypoints(list(snapshot.waypoints)))
-    
+
     def _create_scrollable_tab(self, notebook: ttk.Notebook, title: str) -> ttk.Frame:
         scrollable = ScrollableFrame(notebook)
         notebook.add(scrollable, text=title)
@@ -669,7 +679,6 @@ class ModernMainWindow(MainWindow):
 
         trace_dir = self._profile_path.parent / "_memory_traces" / self._profile.name
         trace_dir.mkdir(parents=True, exist_ok=True)
-
         self._memory_trace_path = trace_dir / f"memory-trace-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}.jsonl"
         self._memory_trace_path.write_text("", encoding="utf-8")
 
@@ -753,6 +762,91 @@ class ModernMainWindow(MainWindow):
 
         self._last_memory_trace_signature = signature
         self._append_memory_trace_entry(payload)
+
+    def _memory_read_payload(self, required_fields: set[str]) -> dict[str, object]:
+        try:
+            memory_profile = self._build_memory_profile_from_form()
+        except ValueError as error:
+            return {
+                "required_fields": sorted(required_fields),
+                "service_available": False,
+                "available": False,
+                "error": f"invalid-form:{error}",
+                "state": None,
+            }
+
+        memory_service = build_memory_service(memory_profile.memory, required_fields=required_fields)
+        if memory_service is None:
+            return {
+                "required_fields": sorted(required_fields),
+                "service_available": False,
+                "available": False,
+                "error": "memory-service-unavailable",
+                "state": None,
+            }
+
+        result = memory_service.try_get_player_state(required_fields=required_fields)
+        return {
+            "required_fields": sorted(required_fields),
+            "service_available": True,
+            "available": bool(result.available and result.state is not None),
+            "source": result.source,
+            "error": result.error,
+            "state": self._player_state_payload(result),
+        }
+
+    def _append_memory_trace_entry(self, payload: dict[str, object]) -> None:
+        if self._memory_trace_path is None:
+            return
+        with self._memory_trace_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
+    def _build_address_config_payload(self) -> dict[str, dict[str, object]]:
+        payload: dict[str, dict[str, object]] = {}
+        for field_name in self._TRACE_FIELDS:
+            field = getattr(self._profile.memory.addresses, field_name, None)
+            if field is None:
+                payload[field_name] = {
+                    "configured": False,
+                    "absolute_address": "",
+                    "module": "",
+                    "base_offset": "",
+                    "pointer_offsets": [],
+                    "value_type": "",
+                }
+                continue
+
+            has_absolute = bool(getattr(field, "absolute_address", "").strip())
+            has_module_chain = bool(getattr(field, "module", "").strip()) and bool(
+                getattr(field, "base_offset", "").strip()
+            )
+            payload[field_name] = {
+                "configured": bool(has_absolute or has_module_chain),
+                "absolute_address": getattr(field, "absolute_address", ""),
+                "module": getattr(field, "module", ""),
+                "base_offset": getattr(field, "base_offset", ""),
+                "pointer_offsets": list(getattr(field, "pointer_offsets", []) or []),
+                "value_type": getattr(field, "value_type", ""),
+            }
+        return payload
+
+    @staticmethod
+    def _player_state_payload(result: MemoryReadResult | None) -> dict[str, object] | None:
+        if result is None or result.state is None:
+            return None
+        return {
+            "hp": result.state.hp,
+            "max_hp": result.state.max_hp,
+            "mp": result.state.mp,
+            "max_mp": result.state.max_mp,
+            "x": result.state.x,
+            "y": result.state.y,
+            "z": result.state.z,
+            "level": result.state.level,
+            "exp": result.state.exp,
+            "has_target": result.state.has_target,
+            "target_id": result.state.target_id,
+        }
 
     def _apply_cavebot_overview(self) -> None:
         live_cycle = self._session_controller.live_cycle_result
