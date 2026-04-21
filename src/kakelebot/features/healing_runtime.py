@@ -196,7 +196,8 @@ class HealingRuntime:
             require_target_text_match=require_target_text_match,
         )
 
-        valid_target = target_evaluation.valid
+        combat_targeting_enabled = attack_enabled or secondary_attack_enabled
+        valid_target = target_evaluation.valid if combat_targeting_enabled else False
 
         if decision.should_heal_life:
             actions.append(KeyAction(life_hotkey, "heal-life"))
@@ -243,7 +244,9 @@ class HealingRuntime:
                     and (now - self._last_attack_at) <= secondary_attack_combo_window_seconds
                 )
 
-            if not secondary_skill_evaluation.allowed:
+            if not valid_target:
+                secondary_attack_status = target_evaluation.failure_reason
+            elif not secondary_skill_evaluation.allowed:
                 secondary_attack_status = secondary_skill_evaluation.reason
             elif not allowed_by_primary_rule:
                 secondary_attack_status = "waiting-primary"
@@ -341,11 +344,11 @@ class HealingRuntime:
             secondary_attack_status=secondary_attack_status,
             hunt_status=hunt_status,
             current_section=current_section,
-            has_target=target_evaluation.has_target,
-            target_confirmed=target_evaluation.confirmed,
-            target_oscillating=target_evaluation.oscillating,
-            target_reason=target_evaluation.target_reason,
-            target_text=target_evaluation.target_text,
+            has_target=target_evaluation.has_target if combat_targeting_enabled else False,
+            target_confirmed=target_evaluation.confirmed if combat_targeting_enabled else False,
+            target_oscillating=target_evaluation.oscillating if combat_targeting_enabled else False,
+            target_reason=target_evaluation.target_reason if combat_targeting_enabled else "combat-disabled",
+            target_text=target_evaluation.target_text if combat_targeting_enabled else "",
             data_source=data_source,
             memory_status=memory_status,
             player_position=player_position,
