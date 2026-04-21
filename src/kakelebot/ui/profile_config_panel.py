@@ -59,6 +59,7 @@ class ProfileConfigPanel:
         on_start_hunt_recording: Callable[[], None],
         on_stop_hunt_recording: Callable[[], None],
         on_save_profile: Callable[[], None],
+        on_open_waypoint_editor: Callable[[], None] | None = None,
     ) -> None:
         frame = ttk.LabelFrame(parent, text="Automation configuration", padding=12)
         frame.pack(fill=tk.BOTH, expand=False, pady=(0, 12))
@@ -132,6 +133,7 @@ class ProfileConfigPanel:
             on_start_hunt_recording=on_start_hunt_recording,
             on_stop_hunt_recording=on_stop_hunt_recording,
             on_save_profile=on_save_profile,
+            on_open_waypoint_editor=on_open_waypoint_editor,
         )
 
     def _build_heal_tab(
@@ -278,7 +280,14 @@ class ProfileConfigPanel:
             recorder_actions,
             text="Stop recording",
             command=kwargs["on_stop_hunt_recording"],
-        ).pack(side=tk.LEFT)
+        ).pack(side=tk.LEFT, padx=(0, 6))
+
+        if kwargs.get("on_open_waypoint_editor") is not None:
+            ttk.Button(
+                recorder_actions,
+                text="Edit waypoints",
+                command=kwargs["on_open_waypoint_editor"],
+            ).pack(side=tk.LEFT)
 
         ttk.Label(parent, text="Route builder", font=("Segoe UI", 9, "bold")).grid(
             row=base_row + 2,
