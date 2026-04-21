@@ -8,6 +8,8 @@ import tkinter as tk
 from tkinter import ttk
 
 from kakelebot.core.config import HuntWaypoint, MemoryAddressSettings, save_profile
+from kakelebot.core.memory import MemoryReadResult
+from kakelebot.core.memory_factory import build_memory_service
 from kakelebot.core.memory_field_tester import MemoryFieldTester, MemoryFieldTestResult
 from kakelebot.ui.main_window import MainWindow
 from kakelebot.ui.memory_editor_dialog import MemoryEditorDialog
@@ -438,6 +440,29 @@ class ModernMainWindow(MainWindow):
                 justify="left",
             ).pack(anchor="w", pady=2)
 
+    def _read_memory_overview_result(self):
+        try:
+            memory_profile = self._build_memory_profile_from_form()
+        except ValueError as error:
+            self._memory_status_var.set(f"memory status: invalid form ({error})")
+            return None
+        required_fields = {"hp", "max_hp", "mp", "max_mp", "x", "y", "z", "has_target", "target_id"}
+        memory_service = build_memory_service(memory_profile.memory, required_fields=required_fields)
+        if memory_service is None:
+            return None
+        return memory_service.try_get_player_state(required_fields=required_fields)
+
+    def _read_memory_position_result(self) -> MemoryReadResult | None:
+        try:
+            memory_profile = self._build_memory_profile_from_form()
+        except ValueError:
+            return None
+        required_fields = {"x", "y", "z"}
+        memory_service = build_memory_service(memory_profile.memory, required_fields=required_fields)
+        if memory_service is None:
+            return None
+        return memory_service.try_get_player_state(required_fields=required_fields)
+
     def _on_open_memory_editor(self) -> None:
         if self._memory_editor_dialog is not None:
             self._memory_editor_dialog.focus()
@@ -521,6 +546,53 @@ class ModernMainWindow(MainWindow):
             f"Memory field test [{field_name}] -> {status} | value={result.value} | message={result.message}\n"
         )
         return result
+
+    def _on_start_hunt_recording(self) -> None:
+        if self._worker is not None and self._worker.is_alive():
+            self._append_output("Hunt recording ignored: session is running.\n")
+            return
+
+        position_result = self._read_memory_position_result()
+        if position_result is None or not position_result.available or position_result.state is None:
+            reason = "position offsets x/y/z are not configured or the read is invalid"
+            if position_result is not None and position_result.error:
+                reason = position_result.error
+            self._append_output(f"Hunt recording start failed: {reason}.\n")
+            self._hunt_recording_status_var.set("hunt recording: waiting for valid memory position")
+            return
+
+        origin_position = (
+            position_result.state.x,
+            position_result.state.y,
+            position_result.state.z,
+        )
+        self._hunt_recorder.start(
+            move_up_hotkey=self._hunt_move_up_hotkey_var.get(),
+            move_down_hotkey=self._hunt_move_down_hotkey_var.get(),
+            move_left_hotkey=self._hunt_move_left_hotkey_var.get(),
+            move_right_hotkey=self._hunt_move_right_hotkey_var.get(),
+            origin_position=origin_position,
+        )
+        self._hunt_recording_status_var.set(
+            f"hunt recording: recording from memory origin ({origin_position[0]}, {origin_position[1]}, {origin_position[2]})"
+        )
+        self._append_output("Hunt recording started with memory positions.\n")
+
+    def _refresh_hunt_recording_status(self) -> None:
+        position_result = self._read_memory_position_result()
+        if position_result is not None and position_result.available and position_result.state is not None:
+            self._hunt_recorder.record_position(
+                (position_result.state.x, position_result.state.y, position_result.state.z)
+            )
+
+        snapshot = self._hunt_recorder.snapshot()
+        if not snapshot.is_recording:
+            return
+
+        self._hunt_recording_status_var.set(
+            f"hunt recording: REC | nodes={len(snapshot.waypoints)} | delta=({snapshot.relative_x}, {snapshot.relative_y}) | status={snapshot.status}"
+        )
+        self._hunt_route_preview_var.set(self._format_hunt_waypoints(list(snapshot.waypoints)))
 
     def _create_scrollable_tab(self, notebook: ttk.Notebook, title: str) -> ttk.Frame:
         scrollable = ScrollableFrame(notebook)
@@ -617,10 +689,34 @@ class ModernMainWindow(MainWindow):
     def _capture_memory_trace_sample(self) -> None:
         if not self._memory_trace_enabled or self._memory_trace_path is None:
             return
-        result = self._read_memory_overview_result()
+
+        configured_fields = set()
+        for field_name in ("hp", "max_hp", "mp", "max_mp", "x", "y", "z", "has_target", "target_id", "level", "exp"):
+            field = getattr(self._profile.memory.addresses, field_name, None)
+            if field is None:
+                continue
+            if getattr(field, "absolute_address", "").strip() or (
+                getattr(field, "module", "").strip() and getattr(field, "base_offset", "").strip()
+            ):
+                configured_fields.add(field_name)
+
+        if not configured_fields:
+            return
+
+        try:
+            memory_profile = self._build_memory_profile_from_form()
+        except ValueError:
+            return
+
+        memory_service = build_memory_service(memory_profile.memory, required_fields=configured_fields)
+        if memory_service is None:
+            return
+        result = memory_service.try_get_player_state(required_fields=configured_fields)
+
         payload = {
             "timestamp_utc": datetime.now(UTC).isoformat(),
             "process_name": self._memory_process_picker_var.get().strip() or self._profile.memory.process_name,
+            "configured_fields": sorted(configured_fields),
             "memory_enabled": bool(self._memory_enabled_var.get()),
             "available": bool(result is not None and result.available and result.state is not None),
             "source": None if result is None else result.source,
@@ -641,7 +737,7 @@ class ModernMainWindow(MainWindow):
                 "has_target": result.state.has_target,
                 "target_id": result.state.target_id,
             }
-        signature = json.dumps(payload.get("state"), sort_keys=True, default=str)
+        signature = json.dumps(payload, sort_keys=True, default=str)
         if signature == self._last_memory_trace_signature:
             return
         self._last_memory_trace_signature = signature
