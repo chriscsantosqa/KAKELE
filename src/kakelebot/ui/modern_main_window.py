@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import copy
 import threading
 import tkinter as tk
 from tkinter import ttk
 
+from kakelebot.core.config import MemoryAddressSettings, save_profile
+from kakelebot.core.memory_field_tester import MemoryFieldTester, MemoryFieldTestResult
 from kakelebot.ui.main_window import MainWindow
+from kakelebot.ui.memory_editor_dialog import MemoryEditorDialog
 from kakelebot.ui.scrollable_frame import ScrollableFrame
 from kakelebot.ui.session_actions_panel import SessionActionsPanel
 
@@ -41,6 +45,8 @@ class ModernMainWindow(MainWindow):
         self._cavebot_position_var = tk.StringVar(value="cavebot position: -")
         self._cavebot_loops_var = tk.StringVar(value="cavebot loops: -")
         self._last_logged_hunt_status = ""
+        self._memory_editor_dialog: MemoryEditorDialog | None = None
+        self._memory_field_tester = MemoryFieldTester()
 
     def _configure_theme(self) -> None:
         style = ttk.Style(self.root)
@@ -304,6 +310,118 @@ class ModernMainWindow(MainWindow):
                 wraplength=860,
                 justify="left",
             ).pack(anchor="w", pady=2)
+
+    def _build_memory_overview(self, parent) -> None:
+        frame = ttk.LabelFrame(parent, text="Memory capture (Windows executable)", padding=12)
+        frame.pack(fill=tk.BOTH, expand=True, pady=(0, 12))
+
+        controls = ttk.Frame(frame)
+        controls.pack(fill=tk.X, pady=(0, 8))
+
+        ttk.Checkbutton(
+            controls,
+            text="Enable memory reading",
+            variable=self._memory_enabled_var,
+            command=self._on_memory_settings_changed,
+        ).pack(side=tk.LEFT, padx=(0, 10))
+
+        ttk.Label(controls, text="Executable").pack(side=tk.LEFT, padx=(0, 6))
+        self._memory_process_combo = ttk.Combobox(
+            controls,
+            textvariable=self._memory_process_picker_var,
+            state="readonly",
+            width=28,
+            values=self._memory_process_values,
+        )
+        self._memory_process_combo.pack(side=tk.LEFT, padx=(0, 6))
+        self._memory_process_combo.bind("<<ComboboxSelected>>", lambda _event: self._on_apply_memory_process_selection())
+
+        ttk.Button(
+            controls,
+            text="Refresh executables",
+            command=self._on_refresh_memory_processes,
+        ).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(
+            controls,
+            text="Use selected",
+            command=self._on_apply_memory_process_selection,
+        ).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(
+            controls,
+            text="Configure offsets",
+            style="Accent.TButton",
+            command=self._on_open_memory_editor,
+        ).pack(side=tk.LEFT)
+
+        ttk.Label(
+            frame,
+            textvariable=self._memory_process_name_var,
+            wraplength=860,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 6))
+
+        for variable in (
+            self._memory_status_var,
+            self._memory_source_var,
+            self._memory_hp_var,
+            self._memory_mp_var,
+            self._memory_position_var,
+            self._memory_target_var,
+            self._memory_level_var,
+        ):
+            ttk.Label(
+                frame,
+                textvariable=variable,
+                wraplength=860,
+                justify="left",
+            ).pack(anchor="w", pady=2)
+
+    def _on_open_memory_editor(self) -> None:
+        if self._memory_editor_dialog is not None:
+            self._memory_editor_dialog.focus()
+            return
+
+        self._refresh_memory_process_options()
+        process_name = self._memory_process_picker_var.get().strip() or self._profile.memory.process_name
+        self._memory_editor_dialog = MemoryEditorDialog(
+            parent=self.root,
+            initial_addresses=copy.deepcopy(self._profile.memory.addresses),
+            process_name=process_name,
+            on_apply=self._apply_memory_addresses_from_editor,
+            on_test_field=self._test_memory_field_from_editor,
+            on_close=self._on_memory_editor_closed,
+        )
+        self._append_output("Memory offsets editor opened.\n")
+
+    def _on_memory_editor_closed(self) -> None:
+        self._memory_editor_dialog = None
+
+    def _apply_memory_addresses_from_editor(self, addresses: MemoryAddressSettings) -> None:
+        updated_profile = copy.deepcopy(self._profile)
+        self._sync_form_into_profile(updated_profile)
+        updated_profile.memory.addresses = addresses
+        self._profile = updated_profile
+        save_profile(self._profile_path, self._profile)
+        self._append_output(f"Memory offsets saved to {self._profile_path}.\n")
+        self._apply_memory_overview()
+
+    def _test_memory_field_from_editor(
+        self,
+        addresses: MemoryAddressSettings,
+        field_name: str,
+    ) -> MemoryFieldTestResult:
+        test_profile = copy.deepcopy(self._profile)
+        self._sync_form_into_profile(test_profile)
+        test_profile.memory.addresses = addresses
+        result = self._memory_field_tester.test_field(
+            memory_settings=test_profile.memory,
+            field_name=field_name,
+        )
+        status = "ok" if result.success else "fail"
+        self._append_output(
+            f"Memory field test [{field_name}] -> {status} | value={result.value} | message={result.message}\n"
+        )
+        return result
 
     def _create_scrollable_tab(self, notebook: ttk.Notebook, title: str) -> ttk.Frame:
         scrollable = ScrollableFrame(notebook)
