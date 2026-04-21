@@ -225,7 +225,11 @@ class HuntRuntime:
             if target_z != player_position[2]:
                 return HuntCycleAction(
                     action=None,
-                    status="z-mismatch",
+                    status=(
+                        f"z-mismatch|waypoint={current_waypoint_index + 1}/{total_waypoints}"
+                        f"|target=({waypoint.target_x},{waypoint.target_y},{target_z})"
+                        f"|player=({player_position[0]},{player_position[1]},{player_position[2]})"
+                    ),
                     waypoint_index=current_waypoint_index,
                     total_waypoints=total_waypoints,
                     relative_x=self._relative_x,
@@ -237,7 +241,11 @@ class HuntRuntime:
             self._advance_waypoint(loop_route=loop_route, total_waypoints=total_waypoints)
             return HuntCycleAction(
                 action=None,
-                status="waypoint-reached",
+                status=(
+                    f"waypoint-reached|waypoint={current_waypoint_index + 1}/{total_waypoints}"
+                    f"|target=({waypoint.target_x},{waypoint.target_y},{target_z})"
+                    f"|player=({player_position[0]},{player_position[1]},{player_position[2]})"
+                ),
                 waypoint_index=current_waypoint_index,
                 total_waypoints=total_waypoints,
                 relative_x=self._relative_x,
@@ -273,7 +281,12 @@ class HuntRuntime:
                 reason=f"hunt-coordinate-{current_waypoint_index}-{direction}",
                 hold_seconds=self._MOVEMENT_HOLD_SECONDS,
             ),
-            status="coordinate-moving",
+            status=(
+                f"coordinate-moving|waypoint={current_waypoint_index + 1}/{total_waypoints}"
+                f"|target=({waypoint.target_x},{waypoint.target_y},{waypoint.target_z})"
+                f"|player=({player_position[0]},{player_position[1]},{player_position[2]})"
+                f"|delta=({delta_x},{delta_y})|dir={direction}"
+            ),
             waypoint_index=current_waypoint_index,
             total_waypoints=total_waypoints,
             relative_x=self._relative_x,
