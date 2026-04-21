@@ -17,6 +17,8 @@ from kakelebot.ui.profile_config_panel import ProfileConfigPanel
 from kakelebot.ui.scrollable_frame import ScrollableFrame
 from kakelebot.ui.session_actions_panel import SessionActionsPanel
 from kakelebot.ui.waypoint_editor_dialog import WaypointEditorDialog
+from kakelebot.core.memory import MemoryReadResult
+from kakelebot.core.memory_factory import build_memory_service, list_running_process_names
 
 
 class ModernMainWindow(MainWindow):
@@ -446,23 +448,26 @@ class ModernMainWindow(MainWindow):
         except ValueError as error:
             self._memory_status_var.set(f"memory status: invalid form ({error})")
             return None
+
         required_fields = {"hp", "max_hp", "mp", "max_mp", "x", "y", "z", "has_target", "target_id"}
         memory_service = build_memory_service(memory_profile.memory, required_fields=required_fields)
         if memory_service is None:
             return None
         return memory_service.try_get_player_state(required_fields=required_fields)
 
+
     def _read_memory_position_result(self) -> MemoryReadResult | None:
         try:
             memory_profile = self._build_memory_profile_from_form()
         except ValueError:
             return None
+
         required_fields = {"x", "y", "z"}
         memory_service = build_memory_service(memory_profile.memory, required_fields=required_fields)
         if memory_service is None:
             return None
         return memory_service.try_get_player_state(required_fields=required_fields)
-
+    
     def _on_open_memory_editor(self) -> None:
         if self._memory_editor_dialog is not None:
             self._memory_editor_dialog.focus()
@@ -577,7 +582,7 @@ class ModernMainWindow(MainWindow):
             f"hunt recording: recording from memory origin ({origin_position[0]}, {origin_position[1]}, {origin_position[2]})"
         )
         self._append_output("Hunt recording started with memory positions.\n")
-
+    
     def _refresh_hunt_recording_status(self) -> None:
         position_result = self._read_memory_position_result()
         if position_result is not None and position_result.available and position_result.state is not None:
@@ -593,7 +598,7 @@ class ModernMainWindow(MainWindow):
             f"hunt recording: REC | nodes={len(snapshot.waypoints)} | delta=({snapshot.relative_x}, {snapshot.relative_y}) | status={snapshot.status}"
         )
         self._hunt_route_preview_var.set(self._format_hunt_waypoints(list(snapshot.waypoints)))
-
+    
     def _create_scrollable_tab(self, notebook: ttk.Notebook, title: str) -> ttk.Frame:
         scrollable = ScrollableFrame(notebook)
         notebook.add(scrollable, text=title)
@@ -661,18 +666,48 @@ class ModernMainWindow(MainWindow):
         if self._memory_trace_enabled:
             self._append_output("Memory trace is already running.\n")
             return
+
         trace_dir = self._profile_path.parent / "_memory_traces" / self._profile.name
         trace_dir.mkdir(parents=True, exist_ok=True)
+
         self._memory_trace_path = trace_dir / f"memory-trace-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}.jsonl"
+        self._memory_trace_path.write_text("", encoding="utf-8")
+
         self._memory_trace_enabled = True
         self._last_memory_trace_signature = ""
+
+        self._append_memory_trace_entry(
+            {
+                "event": "trace-started",
+                "timestamp_utc": datetime.now(UTC).isoformat(),
+                "process_name": self._memory_process_picker_var.get().strip() or self._profile.memory.process_name,
+                "memory_enabled": bool(self._memory_enabled_var.get()),
+                "running_processes": list_running_process_names(),
+                "address_config": self._build_address_config_payload(),
+            }
+        )
+
         self._append_output(f"Memory trace started: {self._memory_trace_path}\n")
+        self._capture_memory_trace_sample(force=True)
 
     def _on_stop_memory_trace(self) -> None:
         if not self._memory_trace_enabled:
             self._append_output("Memory trace is not running.\n")
             return
+
+        self._capture_memory_trace_sample(force=True)
         path = self._memory_trace_path
+
+        self._append_memory_trace_entry(
+            {
+                "event": "trace-stopped",
+                "timestamp_utc": datetime.now(UTC).isoformat(),
+                "process_name": self._memory_process_picker_var.get().strip() or self._profile.memory.process_name,
+                "memory_enabled": bool(self._memory_enabled_var.get()),
+                "address_config": self._build_address_config_payload(),
+            }
+        )
+
         self._memory_trace_enabled = False
         self._memory_trace_path = None
         self._last_memory_trace_signature = ""
@@ -686,63 +721,38 @@ class ModernMainWindow(MainWindow):
         if live_cycles_completed > 0 and self._worker is not None and self._worker.is_alive():
             self._cycles_var.set(f"cycles: {live_cycles_completed}")
 
-    def _capture_memory_trace_sample(self) -> None:
+    def _capture_memory_trace_sample(self, *, force: bool = False) -> None:
         if not self._memory_trace_enabled or self._memory_trace_path is None:
             return
 
-        configured_fields = set()
-        for field_name in ("hp", "max_hp", "mp", "max_mp", "x", "y", "z", "has_target", "target_id", "level", "exp"):
-            field = getattr(self._profile.memory.addresses, field_name, None)
-            if field is None:
-                continue
-            if getattr(field, "absolute_address", "").strip() or (
-                getattr(field, "module", "").strip() and getattr(field, "base_offset", "").strip()
-            ):
-                configured_fields.add(field_name)
-
-        if not configured_fields:
-            return
-
-        try:
-            memory_profile = self._build_memory_profile_from_form()
-        except ValueError:
-            return
-
-        memory_service = build_memory_service(memory_profile.memory, required_fields=configured_fields)
-        if memory_service is None:
-            return
-        result = memory_service.try_get_player_state(required_fields=configured_fields)
+        process_name = self._memory_process_picker_var.get().strip() or self._profile.memory.process_name
+        address_config = self._build_address_config_payload()
+        configured_fields = {
+            field_name
+            for field_name, config in address_config.items()
+            if config["configured"]
+        }
 
         payload = {
+            "event": "sample",
             "timestamp_utc": datetime.now(UTC).isoformat(),
-            "process_name": self._memory_process_picker_var.get().strip() or self._profile.memory.process_name,
-            "configured_fields": sorted(configured_fields),
+            "process_name": process_name,
             "memory_enabled": bool(self._memory_enabled_var.get()),
-            "available": bool(result is not None and result.available and result.state is not None),
-            "source": None if result is None else result.source,
-            "error": None if result is None else result.error,
-            "state": None,
+            "configured_fields": sorted(configured_fields),
+            "running_process_detected": process_name.lower() in {name.lower() for name in list_running_process_names()},
+            "address_config": address_config,
+            "position_read": self._memory_read_payload({"x", "y", "z"}),
+            "heal_read": self._memory_read_payload({"hp", "max_hp", "mp", "max_mp"}),
+            "target_read": self._memory_read_payload({"has_target", "target_id"}),
+            "full_read": self._memory_read_payload({"hp", "max_hp", "mp", "max_mp", "x", "y", "z", "has_target", "target_id"}),
         }
-        if result is not None and result.available and result.state is not None:
-            payload["state"] = {
-                "hp": result.state.hp,
-                "max_hp": result.state.max_hp,
-                "mp": result.state.mp,
-                "max_mp": result.state.max_mp,
-                "x": result.state.x,
-                "y": result.state.y,
-                "z": result.state.z,
-                "level": result.state.level,
-                "exp": result.state.exp,
-                "has_target": result.state.has_target,
-                "target_id": result.state.target_id,
-            }
+
         signature = json.dumps(payload, sort_keys=True, default=str)
-        if signature == self._last_memory_trace_signature:
+        if not force and signature == self._last_memory_trace_signature:
             return
+
         self._last_memory_trace_signature = signature
-        with self._memory_trace_path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        self._append_memory_trace_entry(payload)
 
     def _apply_cavebot_overview(self) -> None:
         live_cycle = self._session_controller.live_cycle_result
