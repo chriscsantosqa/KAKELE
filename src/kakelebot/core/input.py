@@ -31,9 +31,7 @@ class InputService:
     def execute_many(self, actions: list[KeyAction], inter_key_delay_seconds: float = 0.0) -> None:
         directional_action = self._find_directional_hunt_action(actions)
         if directional_action is not None:
-            self._sync_directional_hold(directional_action.key)
-        else:
-            self._release_directional_hold()
+            self.sync_directional_hold(directional_action.key)
 
         non_directional_actions = [
             action for action in actions if not self._is_directional_hunt_action(action)
@@ -52,6 +50,24 @@ class InputService:
             if inter_key_delay_seconds > 0 and index < len(non_directional_actions) - 1:
                 time.sleep(inter_key_delay_seconds)
 
+    def sync_directional_hold(self, key: str | None) -> None:
+        normalized = (key or "").strip()
+        if not normalized:
+            self.release_held_keys()
+            return
+        if self._held_directional_key == normalized:
+            return
+        if self._held_directional_key is not None:
+            self._key_up(self._held_directional_key)
+        self._key_down(normalized)
+        self._held_directional_key = normalized
+
+    def release_held_keys(self) -> None:
+        if self._held_directional_key is None:
+            return
+        self._key_up(self._held_directional_key)
+        self._held_directional_key = None
+
     def _press(self, key: str, hold_seconds: float) -> None:
         press = getattr(self._adapter, "press")
         try:
@@ -62,24 +78,6 @@ class InputService:
         except (TypeError, ValueError):
             pass
         press(key)
-
-    def _sync_directional_hold(self, key: str) -> None:
-        normalized = key.strip()
-        if not normalized:
-            self._release_directional_hold()
-            return
-        if self._held_directional_key == normalized:
-            return
-        if self._held_directional_key is not None:
-            self._key_up(self._held_directional_key)
-        self._key_down(normalized)
-        self._held_directional_key = normalized
-
-    def _release_directional_hold(self) -> None:
-        if self._held_directional_key is None:
-            return
-        self._key_up(self._held_directional_key)
-        self._held_directional_key = None
 
     def _key_down(self, key: str) -> None:
         key_down = getattr(self._adapter, "key_down", None)
