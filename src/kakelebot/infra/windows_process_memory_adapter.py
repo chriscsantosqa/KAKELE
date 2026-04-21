@@ -72,8 +72,8 @@ class WindowsProcessMemoryAdapter:
                 "z": self._read_field_value(handle, module_bases, self._addresses.z),
                 "has_target": self._read_field_value(handle, module_bases, self._addresses.has_target),
                 "target_id": self._read_field_value(handle, module_bases, self._addresses.target_id),
-                "level": self._read_field_value(handle, module_bases, self._addresses.level),
-                "exp": self._read_field_value(handle, module_bases, self._addresses.exp),
+                "level": self._read_optional_field_value(handle, module_bases, self._addresses.level, 1),
+                "exp": self._read_optional_field_value(handle, module_bases, self._addresses.exp, 0),
             }
         finally:
             ctypes.windll.kernel32.CloseHandle(handle)  # type: ignore[attr-defined]
@@ -86,6 +86,17 @@ class WindowsProcessMemoryAdapter:
     ) -> int:
         target_address = self._resolve_field_address(process_handle, module_bases, field)
         return self._read_value(process_handle, target_address, field.value_type)
+
+    def _read_optional_field_value(
+        self,
+        process_handle,
+        module_bases: dict[str, int],
+        field: MemoryFieldAddress,
+        default: int,
+    ) -> int:
+        if field.absolute_address is None and not field.module.strip():
+            return default
+        return self._read_field_value(process_handle, module_bases, field)
 
     def _resolve_field_address(
         self,
@@ -291,6 +302,24 @@ def build_field_address(raw: object) -> MemoryFieldAddress:
     )
 
 
+def build_optional_field_address(raw: object) -> MemoryFieldAddress:
+    absolute_address = getattr(raw, "absolute_address", "") or ""
+    module = getattr(raw, "module", "") or ""
+    base_offset = getattr(raw, "base_offset", "") or ""
+    value_type = getattr(raw, "value_type", "int32") or "int32"
+
+    if not str(absolute_address).strip() and not str(module).strip() and not str(base_offset).strip():
+        return MemoryFieldAddress(
+            absolute_address=None,
+            module="",
+            base_offset=None,
+            pointer_offsets=tuple(),
+            value_type=str(value_type).strip() or "int32",
+        )
+
+    return build_field_address(raw)
+
+
 def build_address_map(raw: object) -> MemoryAddressMap:
     if raw is None:
         raise ValueError("memory addresses are missing")
@@ -304,6 +333,6 @@ def build_address_map(raw: object) -> MemoryAddressMap:
         z=build_field_address(getattr(raw, "z", None)),
         has_target=build_field_address(getattr(raw, "has_target", None)),
         target_id=build_field_address(getattr(raw, "target_id", None)),
-        level=build_field_address(getattr(raw, "level", None)),
-        exp=build_field_address(getattr(raw, "exp", None)),
+        level=build_optional_field_address(getattr(raw, "level", None)),
+        exp=build_optional_field_address(getattr(raw, "exp", None)),
     )
