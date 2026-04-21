@@ -267,6 +267,7 @@ class HealingRuntime:
         )
         self._update_special_area_hold(active_special_area=active_special_area, now=now)
 
+        cycle: HuntCycleAction | None = None
         if hunt_enabled:
             if valid_target and section_policy.pause_hunt_during_target:
                 suppressed.append("hunt-paused-during-target")
@@ -307,6 +308,24 @@ class HealingRuntime:
                         actions.append(recovery_action)
                         hunt_status = "stuck-recovery"
                         data_source = "memory-hybrid" if data_source != "vision" else "memory-cavebot"
+
+        directional_key = None if cycle is None or cycle.action is None else cycle.action.key
+        if not window_is_active:
+            self._input.release_held_keys()
+            suppressed.append("window-inactive")
+            if hunt_enabled:
+                hunt_status = "window-inactive"
+            if attack_status == "executed":
+                attack_status = "blocked-window-inactive"
+            if secondary_attack_status == "executed":
+                secondary_attack_status = "blocked-window-inactive"
+            if haste_status == "executed":
+                haste_status = "blocked-window-inactive"
+            actions = []
+        elif directional_key is not None:
+            self._input.sync_directional_hold(directional_key)
+        elif hunt_enabled:
+            self._input.release_held_keys()
 
         if actions:
             self._input.execute_many(actions, 0)
