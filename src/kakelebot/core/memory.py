@@ -36,10 +36,10 @@ class MemoryService:
         self._adapter = adapter
         self._validator = validator or MemorySnapshotValidator()
 
-    def try_get_player_state(self) -> MemoryReadResult:
+    def try_get_player_state(self, required_fields: set[str] | None = None) -> MemoryReadResult:
         try:
             data = self._adapter.read_all_offsets()
-            validation = self._validator.validate(data)
+            validation = self._validator.validate(data, required_fields=required_fields)
             if not validation.is_valid:
                 error_message = "; ".join(validation.reasons)
                 logger.warning("memory read rejected by validator: %s", error_message)
@@ -78,8 +78,8 @@ class MemoryService:
                 error=str(error),
             )
 
-    def get_player_state(self) -> PlayerState:
-        result = self.try_get_player_state()
+    def get_player_state(self, required_fields: set[str] | None = None) -> PlayerState:
+        result = self.try_get_player_state(required_fields=required_fields)
         if not result.available or result.state is None:
             raise RuntimeError(result.error or "memory unavailable")
         return result.state
