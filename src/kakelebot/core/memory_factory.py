@@ -28,14 +28,20 @@ _REQUIRED_CORE_FIELDS = (
 )
 
 
-def build_memory_service(memory_settings: MemorySettings) -> MemoryService | None:
+def build_memory_service(
+    memory_settings: MemorySettings,
+    *,
+    required_fields: set[str] | None = None,
+) -> MemoryService | None:
     if not memory_settings.enabled:
         return None
     if os.name != "nt":
         logger.warning("memory service disabled: current platform is not Windows")
         return None
-    if not _has_minimum_required_addresses(memory_settings):
-        logger.debug("memory service waiting for required core addresses")
+
+    effective_required_fields = required_fields or set(_REQUIRED_CORE_FIELDS)
+    if not _has_required_addresses(memory_settings, effective_required_fields):
+        logger.debug("memory service waiting for required fields: %s", sorted(effective_required_fields))
         return None
 
     try:
@@ -64,8 +70,8 @@ def list_running_process_names() -> list[str]:
     return sorted(names, key=str.lower)
 
 
-def _has_minimum_required_addresses(memory_settings: MemorySettings) -> bool:
-    for field_name in _REQUIRED_CORE_FIELDS:
+def _has_required_addresses(memory_settings: MemorySettings, required_fields: set[str]) -> bool:
+    for field_name in required_fields:
         field = getattr(memory_settings.addresses, field_name, None)
         if field is None:
             return False
