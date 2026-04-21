@@ -96,9 +96,6 @@ class HuntRuntime:
 
         current_section = self._current_section(waypoints)
 
-        if self._last_waypoint_at is not None and (now - self._last_waypoint_at) < waypoint_interval_seconds:
-            return self.snapshot(total_waypoints=total_waypoints, status="cooldown", current_section=current_section)
-
         if self._waypoint_index >= total_waypoints:
             if not loop_route:
                 last_waypoint = waypoints[-1]
@@ -123,7 +120,16 @@ class HuntRuntime:
         waypoint = waypoints[current_waypoint_index]
         current_section = waypoint.section
 
-        if use_coordinate_navigation and player_position is not None and self._waypoint_has_coordinates(waypoint):
+        coordinate_mode_active = (
+            use_coordinate_navigation
+            and player_position is not None
+            and self._waypoint_has_coordinates(waypoint)
+        )
+
+        if not coordinate_mode_active and self._last_waypoint_at is not None and (now - self._last_waypoint_at) < waypoint_interval_seconds:
+            return self.snapshot(total_waypoints=total_waypoints, status="cooldown", current_section=current_section)
+
+        if coordinate_mode_active:
             cycle = self._next_coordinate_action(
                 waypoint=waypoint,
                 current_waypoint_index=current_waypoint_index,
@@ -267,7 +273,7 @@ class HuntRuntime:
                 reason=f"hunt-coordinate-{current_waypoint_index}-{direction}",
                 hold_seconds=self._MOVEMENT_HOLD_SECONDS,
             ),
-            status="coordinate-executed",
+            status="coordinate-moving",
             waypoint_index=current_waypoint_index,
             total_waypoints=total_waypoints,
             relative_x=self._relative_x,
