@@ -7,12 +7,14 @@ from datetime import UTC, datetime
 import tkinter as tk
 from tkinter import ttk
 
-from kakelebot.core.config import MemoryAddressSettings, save_profile
+from kakelebot.core.config import HuntWaypoint, MemoryAddressSettings, save_profile
 from kakelebot.core.memory_field_tester import MemoryFieldTester, MemoryFieldTestResult
 from kakelebot.ui.main_window import MainWindow
 from kakelebot.ui.memory_editor_dialog import MemoryEditorDialog
+from kakelebot.ui.profile_config_panel import ProfileConfigPanel
 from kakelebot.ui.scrollable_frame import ScrollableFrame
 from kakelebot.ui.session_actions_panel import SessionActionsPanel
+from kakelebot.ui.waypoint_editor_dialog import WaypointEditorDialog
 
 
 class ModernMainWindow(MainWindow):
@@ -48,6 +50,7 @@ class ModernMainWindow(MainWindow):
         self._cavebot_loops_var = tk.StringVar(value="cavebot loops: -")
         self._last_logged_hunt_status = ""
         self._memory_editor_dialog: MemoryEditorDialog | None = None
+        self._waypoint_editor_dialog: WaypointEditorDialog | None = None
         self._memory_field_tester = MemoryFieldTester()
         self._memory_trace_enabled = False
         self._memory_trace_path = None
@@ -297,6 +300,60 @@ class ModernMainWindow(MainWindow):
         self._build_output(logs_frame)
         self._style_output_widget()
 
+    def _build_config_editor(self, parent) -> None:
+        ProfileConfigPanel(
+            parent=parent,
+            life_percent_var=self._life_percent_var,
+            mana_percent_var=self._mana_percent_var,
+            ui_scale_var=self._ui_scale_var,
+            polling_interval_var=self._polling_interval_var,
+            life_cooldown_var=self._life_cooldown_var,
+            mana_cooldown_var=self._mana_cooldown_var,
+            cycle_limit_var=self._cycle_limit_var,
+            max_actions_per_minute_var=self._max_actions_per_minute_var,
+            max_consecutive_ocr_failures_var=self._max_consecutive_ocr_failures_var,
+            max_window_missing_seconds_var=self._max_window_missing_seconds_var,
+            start_stop_hotkey_var=self._start_stop_hotkey_var,
+            pause_resume_hotkey_var=self._pause_resume_hotkey_var,
+            heal_life_hotkey_var=self._heal_life_hotkey_var,
+            heal_mana_hotkey_var=self._heal_mana_hotkey_var,
+            buff_haste_hotkey_var=self._buff_haste_hotkey_var,
+            attack_hotkey_var=self._attack_hotkey_var,
+            secondary_attack_hotkey_var=self._secondary_attack_hotkey_var,
+            haste_interval_var=self._haste_interval_var,
+            haste_cooldown_var=self._haste_cooldown_var,
+            attack_cooldown_var=self._attack_cooldown_var,
+            secondary_attack_cooldown_var=self._secondary_attack_cooldown_var,
+            secondary_attack_combo_window_var=self._secondary_attack_combo_window_var,
+            target_confirmation_cycles_var=self._target_confirmation_cycles_var,
+            target_stability_window_var=self._target_stability_window_var,
+            max_target_text_variants_var=self._max_target_text_variants_var,
+            continuous_mode_var=self._continuous_mode_var,
+            haste_enabled_var=self._haste_enabled_var,
+            attack_enabled_var=self._attack_enabled_var,
+            secondary_attack_enabled_var=self._secondary_attack_enabled_var,
+            secondary_attack_after_primary_only_var=self._secondary_attack_after_primary_only_var,
+            hunt_enabled_var=self._hunt_enabled_var,
+            hunt_loop_route_var=self._hunt_loop_route_var,
+            hunt_waypoint_interval_var=self._hunt_waypoint_interval_var,
+            hunt_move_up_hotkey_var=self._hunt_move_up_hotkey_var,
+            hunt_move_down_hotkey_var=self._hunt_move_down_hotkey_var,
+            hunt_move_left_hotkey_var=self._hunt_move_left_hotkey_var,
+            hunt_move_right_hotkey_var=self._hunt_move_right_hotkey_var,
+            hunt_route_preview_var=self._hunt_route_preview_var,
+            hunt_recording_status_var=self._hunt_recording_status_var,
+            on_add_hunt_up=lambda: self._on_add_hunt_waypoint("UP"),
+            on_add_hunt_down=lambda: self._on_add_hunt_waypoint("DOWN"),
+            on_add_hunt_left=lambda: self._on_add_hunt_waypoint("LEFT"),
+            on_add_hunt_right=lambda: self._on_add_hunt_waypoint("RIGHT"),
+            on_remove_last_hunt_waypoint=self._on_remove_last_hunt_waypoint,
+            on_clear_hunt_waypoints=self._on_clear_hunt_waypoints,
+            on_start_hunt_recording=self._on_start_hunt_recording,
+            on_stop_hunt_recording=self._on_stop_hunt_recording,
+            on_save_profile=self._on_save_profile,
+            on_open_waypoint_editor=self._on_open_waypoint_editor,
+        )
+
     def _build_cavebot_overview(self, parent) -> None:
         frame = ttk.LabelFrame(parent, text="Cavebot overview", padding=12)
         frame.pack(fill="x", pady=(0, 12))
@@ -400,6 +457,43 @@ class ModernMainWindow(MainWindow):
 
     def _on_memory_editor_closed(self) -> None:
         self._memory_editor_dialog = None
+
+    def _on_open_waypoint_editor(self) -> None:
+        if self._waypoint_editor_dialog is not None:
+            self._waypoint_editor_dialog.focus()
+            return
+        self._waypoint_editor_dialog = WaypointEditorDialog(
+            parent=self.root,
+            initial_waypoints=self._hunt_waypoints,
+            on_apply=self._apply_waypoints_from_editor,
+            on_close=self._on_waypoint_editor_closed,
+        )
+        self._append_output("Waypoint editor opened.\n")
+
+    def _on_waypoint_editor_closed(self) -> None:
+        self._waypoint_editor_dialog = None
+
+    def _apply_waypoints_from_editor(self, waypoints: list[HuntWaypoint]) -> None:
+        self._hunt_waypoints = [
+            HuntWaypoint(
+                direction=waypoint.direction,
+                repeats=waypoint.repeats,
+                relative_x=waypoint.relative_x,
+                relative_y=waypoint.relative_y,
+                target_x=waypoint.target_x,
+                target_y=waypoint.target_y,
+                target_z=waypoint.target_z,
+                waypoint_type=waypoint.waypoint_type,
+                label=waypoint.label,
+                waypoint_range=waypoint.waypoint_range,
+                wait_time_ms=waypoint.wait_time_ms,
+                action_key=waypoint.action_key,
+                section=waypoint.section,
+            )
+            for waypoint in waypoints
+        ]
+        self._refresh_hunt_route_preview()
+        self._append_output(f"Waypoint route updated from editor: {len(self._hunt_waypoints)} nodes.\n")
 
     def _apply_memory_addresses_from_editor(self, addresses: MemoryAddressSettings) -> None:
         updated_profile = copy.deepcopy(self._profile)
