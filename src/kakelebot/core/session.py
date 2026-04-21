@@ -144,7 +144,7 @@ class SessionController:
             self._last_result = None
 
         try:
-            window = self._window_service.activate_game_window()
+            window = self._window_service.get_game_window()
             whole_window_region = self._capture_service.whole_window_region(window)
             self._capture_service.capture_window(window)
 
